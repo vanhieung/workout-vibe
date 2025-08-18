@@ -1,0 +1,427 @@
+
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Workout Player — Auto Schedule (A/B/C + Rest)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    html, body { background:#0a0a0a; color:#e5e5e5; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, 'Helvetica Neue', Arial; }
+    .tabular-nums { font-variant-numeric: tabular-nums; }
+    @keyframes breathe {
+      0%   { transform: scale(0.9); opacity: 0.9; }
+      25%  { transform: scale(1.05); opacity: 1; }
+      50%  { transform: scale(1.08); opacity: 1; }
+      75%  { transform: scale(0.95); opacity: 0.95; }
+      100% { transform: scale(0.9); opacity: 0.9; }
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- React + ReactDOM + Babel -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <script type="text/babel">
+    const { useEffect, useMemo, useReducer, useState, useRef } = React;
+
+    const clamp = (n, min, max) => Math.min(Math.max(n, min), max);
+    const ms = (s) => Math.max(0, Math.round(s * 1000));
+    const fmt = (msLeft) => {
+      const t = Math.max(0, Math.floor(msLeft/1000));
+      const m = Math.floor(t/60), s = t%60;
+      return String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');
+    };
+    const isYT = (u) => !!u && /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\//i.test(u);
+    const toYT = (u) => {
+      try {
+        const x = new URL(u);
+        if (x.hostname.includes('youtube.com') && x.pathname === '/watch') {
+          const v = x.searchParams.get('v');
+          return v ? `https://www.youtube.com/embed/${v}` : u;
+        }
+        if (x.hostname === 'youtu.be') {
+          const id = x.pathname.replace('/','');
+          return `https://www.youtube.com/embed/${id}`;
+        }
+        return u;
+      } catch { return u; }
+    };
+
+    // ---------- Multi Workout (A/B/C) ----------
+    const WORKOUTS = [
+      {
+        key: 'A',
+        name: 'Buổi A — Đẩy + Hinge (30’)',
+        exercises: [
+          { id:'wu', title:'Khởi động động (toàn thân)', durationSec:240, restSec:20, videoUrl:'https://www.youtube.com/watch?v=2L2lnxIcNmo' },
+          { id:'gs1', title:'Goblet Squat', durationSec:50, restSec:20, videoUrl:'https://www.youtube.com/watch?v=MeIiIdhvXT4' },
+          { id:'fp1', title:'DB Floor Press', durationSec:50, restSec:25, videoUrl:'https://www.youtube.com/watch?v=uUGDRwge4F8' },
+          { id:'rdl1', title:'DB Romanian Deadlift', durationSec:50, restSec:20, videoUrl:'https://www.youtube.com/watch?v=FQKfr1YDhEk' },
+          { id:'rowL1', title:'1-Arm DB Row — Trái', durationSec:45, restSec:10, videoUrl:'https://www.youtube.com/watch?v=roCP6wCXPqo' },
+          { id:'rowR1', title:'1-Arm DB Row — Phải', durationSec:45, restSec:25, videoUrl:'https://www.youtube.com/watch?v=roCP6wCXPqo' },
+
+          { id:'gs2', title:'Goblet Squat', durationSec:50, restSec:20, videoUrl:'https://www.youtube.com/watch?v=MeIiIdhvXT4' },
+          { id:'fp2', title:'DB Floor Press', durationSec:50, restSec:25, videoUrl:'https://www.youtube.com/watch?v=uUGDRwge4F8' },
+          { id:'rdl2', title:'DB Romanian Deadlift', durationSec:50, restSec:20, videoUrl:'https://www.youtube.com/watch?v=FQKfr1YDhEk' },
+          { id:'rowL2', title:'1-Arm DB Row — Trái', durationSec:45, restSec:10, videoUrl:'https://www.youtube.com/watch?v=roCP6wCXPqo' },
+          { id:'rowR2', title:'1-Arm DB Row — Phải', durationSec:45, restSec:25, videoUrl:'https://www.youtube.com/watch?v=roCP6wCXPqo' },
+
+          { id:'gs3', title:'Goblet Squat', durationSec:50, restSec:20, videoUrl:'https://www.youtube.com/watch?v=MeIiIdhvXT4' },
+          { id:'fp3', title:'DB Floor Press', durationSec:50, restSec:25, videoUrl:'https://www.youtube.com/watch?v=uUGDRwge4F8' },
+          { id:'rdl3', title:'DB Romanian Deadlift', durationSec:50, restSec:20, videoUrl:'https://www.youtube.com/watch?v=FQKfr1YDhEk' },
+          { id:'rowL3', title:'1-Arm DB Row — Trái', durationSec:45, restSec:10, videoUrl:'https://www.youtube.com/watch?v=roCP6wCXPqo' },
+          { id:'rowR3', title:'1-Arm DB Row — Phải', durationSec:45, restSec:25, videoUrl:'https://www.youtube.com/watch?v=roCP6wCXPqo' },
+
+          { id:'plk', title:'Front Plank', durationSec:60, restSec:20, videoUrl:'https://www.youtube.com/watch?v=pSHjTRCQxIw' },
+          { id:'dbug', title:'Dead Bug', durationSec:60, restSec:20, videoUrl:'https://www.youtube.com/watch?v=bxn9FBrt4-A' },
+          { id:'mob', title:'Mobility kết thúc', durationSec:210, restSec:0, videoUrl:'https://www.youtube.com/watch?v=lxuTCHJSers' },
+        ]
+      },
+      {
+        key: 'B',
+        name: 'Buổi B — Kéo + Vai + Hông (30’)',
+        exercises: [
+          { id:'wu', title:'Khởi động động (toàn thân)', durationSec:240, restSec:20, videoUrl:'https://www.youtube.com/watch?v=2L2lnxIcNmo' },
+          { id:'lnL1', title:'Reverse Lunge — Trái', durationSec:45, restSec:10, videoUrl:'https://www.youtube.com/watch?v=tFvdF2ZI2og' },
+          { id:'lnR1', title:'Reverse Lunge — Phải', durationSec:45, restSec:20, videoUrl:'https://www.youtube.com/watch?v=tFvdF2ZI2og' },
+          { id:'rowL1', title:'1-Arm DB Row — Trái', durationSec:45, restSec:10, videoUrl:'https://www.youtube.com/watch?v=roCP6wCXPqo' },
+          { id:'rowR1', title:'1-Arm DB Row — Phải', durationSec:45, restSec:25, videoUrl:'https://www.youtube.com/watch?v=roCP6wCXPqo' },
+          { id:'prsL1', title:'Half-kneeling DB Press — Trái', durationSec:45, restSec:10, videoUrl:'https://www.youtube.com/watch?v=nq2QmtJjDGE' },
+          { id:'prsR1', title:'Half-kneeling DB Press — Phải', durationSec:45, restSec:25, videoUrl:'https://www.youtube.com/watch?v=nq2QmtJjDGE' },
+          { id:'bridge1', title:'Glute Bridge', durationSec:60, restSec:20, videoUrl:'https://www.youtube.com/watch?v=m2Y9KkJ5vYg' },
+
+          { id:'lnL2', title:'Reverse Lunge — Trái', durationSec:45, restSec:10, videoUrl:'https://www.youtube.com/watch?v=tFvdF2ZI2og' },
+          { id:'lnR2', title:'Reverse Lunge — Phải', durationSec:45, restSec:20, videoUrl:'https://www.youtube.com/watch?v=tFvdF2ZI2og' },
+          { id:'rowL2', title:'1-Arm DB Row — Trái', durationSec:45, restSec:10, videoUrl:'https://www.youtube.com/watch?v=roCP6wCXPqo' },
+          { id:'rowR2', title:'1-Arm DB Row — Phải', durationSec:45, restSec:25, videoUrl:'https://www.youtube.com/watch?v=roCP6wCXPqo' },
+          { id:'prsL2', title:'Half-kneeling DB Press — Trái', durationSec:45, restSec:10, videoUrl:'https://www.youtube.com/watch?v=nq2QmtJjDGE' },
+          { id:'prsR2', title:'Half-kneeling DB Press — Phải', durationSec:45, restSec:25, videoUrl:'https://www.youtube.com/watch?v=nq2QmtJjDGE' },
+          { id:'bridge2', title:'Glute Bridge', durationSec:60, restSec:20, videoUrl:'https://www.youtube.com/watch?v=m2Y9KkJ5vYg' },
+
+          { id:'lnL3', title:'Reverse Lunge — Trái', durationSec:45, restSec:10, videoUrl:'https://www.youtube.com/watch?v=tFvdF2ZI2og' },
+          { id:'lnR3', title:'Reverse Lunge — Phải', durationSec:45, restSec:20, videoUrl:'https://www.youtube.com/watch?v=tFvdF2ZI2og' },
+          { id:'rowL3', title:'1-Arm DB Row — Trái', durationSec:45, restSec:10, videoUrl:'https://www.youtube.com/watch?v=roCP6wCXPqo' },
+          { id:'rowR3', title:'1-Arm DB Row — Phải', durationSec:45, restSec:25, videoUrl:'https://www.youtube.com/watch?v=roCP6wCXPqo' },
+          { id:'prsL3', title:'Half-kneeling DB Press — Trái', durationSec:45, restSec:10, videoUrl:'https://www.youtube.com/watch?v=nq2QmtJjDGE' },
+          { id:'prsR3', title:'Half-kneeling DB Press — Phải', durationSec:45, restSec:25, videoUrl:'https://www.youtube.com/watch?v=nq2QmtJjDGE' },
+          { id:'bridge3', title:'Glute Bridge', durationSec:60, restSec:20, videoUrl:'https://www.youtube.com/watch?v=m2Y9KkJ5vYg' },
+
+          { id:'dbug', title:'Dead Bug', durationSec:60, restSec:20, videoUrl:'https://www.youtube.com/watch?v=bxn9FBrt4-A' },
+          { id:'splL', title:'Side Plank — Trái', durationSec:40, restSec:10, videoUrl:'https://www.youtube.com/watch?v=K2VljzCC16g' },
+          { id:'splR', title:'Side Plank — Phải', durationSec:40, restSec:20, videoUrl:'https://www.youtube.com/watch?v=K2VljzCC16g' },
+          { id:'mob', title:'Mobility kết thúc', durationSec:180, restSec:0, videoUrl:'https://www.youtube.com/watch?v=lxuTCHJSers' },
+        ]
+      },
+      {
+        key: 'C',
+        name: 'Buổi C — Toàn thân + Mobility (30’)',
+        exercises: [
+          { id:'wu', title:'Khởi động động (toàn thân)', durationSec:240, restSec:20, videoUrl:'https://www.youtube.com/watch?v=2L2lnxIcNmo' },
+
+          { id:'thr1', title:'DB Thruster', durationSec:45, restSec:25, videoUrl:'https://www.youtube.com/watch?v=UXJrBgI2RxA' },
+          { id:'hrow1', title:'Hinge to Row (DB)', durationSec:50, restSec:20, videoUrl:'https://www.youtube.com/watch?v=E2k5zUeR9I8' },
+          { id:'latL1', title:'Lateral Lunge — Trái', durationSec:45, restSec:10, videoUrl:'https://www.youtube.com/watch?v=7yH3GdQIOCM' },
+          { id:'latR1', title:'Lateral Lunge — Phải', durationSec:45, restSec:25, videoUrl:'https://www.youtube.com/watch?v=7yH3GdQIOCM' },
+          { id:'walk1', title:'Pike Walkout → Plank', durationSec:45, restSec:30, videoUrl:'https://www.youtube.com/watch?v=9S5wG8YB5bY' },
+
+          { id:'thr2', title:'DB Thruster', durationSec:45, restSec:25, videoUrl:'https://www.youtube.com/watch?v=UXJrBgI2RxA' },
+          { id:'hrow2', title:'Hinge to Row (DB)', durationSec:50, restSec:20, videoUrl:'https://www.youtube.com/watch?v=E2k5zUeR9I8' },
+          { id:'latL2', title:'Lateral Lunge — Trái', durationSec:45, restSec:10, videoUrl:'https://www.youtube.com/watch?v=7yH3GdQIOCM' },
+          { id:'latR2', title:'Lateral Lunge — Phải', durationSec:45, restSec:25, videoUrl:'https://www.youtube.com/watch?v=7yH3GdQIOCM' },
+          { id:'walk2', title:'Pike Walkout → Plank', durationSec:45, restSec:30, videoUrl:'https://www.youtube.com/watch?v=9S5wG8YB5bY' },
+
+          { id:'thr3', title:'DB Thruster', durationSec:45, restSec:25, videoUrl:'https://www.youtube.com/watch?v=UXJrBgI2RxA' },
+          { id:'hrow3', title:'Hinge to Row (DB)', durationSec:50, restSec:20, videoUrl:'https://www.youtube.com/watch?v=E2k5zUeR9I8' },
+          { id:'latL3', title:'Lateral Lunge — Trái', durationSec:45, restSec:10, videoUrl:'https://www.youtube.com/watch?v=7yH3GdQIOCM' },
+          { id:'latR3', title:'Lateral Lunge — Phải', durationSec:45, restSec:25, videoUrl:'https://www.youtube.com/watch?v=7yH3GdQIOCM' },
+          { id:'walk3', title:'Pike Walkout → Plank', durationSec:45, restSec:30, videoUrl:'https://www.youtube.com/watch?v=9S5wG8YB5bY' },
+
+          { id:'cos', title:'Cossack Squat (giãn)', durationSec:60, restSec:20, videoUrl:'https://www.youtube.com/watch?v=V0qZqQxGixs' },
+          { id:'hipL', title:'90/90 Hips — Trái', durationSec:45, restSec:10, videoUrl:'https://www.youtube.com/watch?v=RwJQwW8nYyo' },
+          { id:'hipR', title:'90/90 Hips — Phải', durationSec:45, restSec:20, videoUrl:'https://www.youtube.com/watch?v=RwJQwW8nYyo' },
+          { id:'ham', title:'Hamstring Stretch', durationSec:60, restSec:15, videoUrl:'https://www.youtube.com/watch?v=1X9wO3qS8hA' },
+          { id:'pec', title:'Pec Stretch (cửa/tường)', durationSec:60, restSec:0, videoUrl:'https://www.youtube.com/watch?v=5w0eFR2E1PA' },
+        ]
+      },
+    ];
+
+    // ---------- Auto schedule ----------
+    // getDay(): 0=CN,1=Mon,...6=Sat
+    const VN_DAY = ['Chủ Nhật','Thứ Hai','Thứ Ba','Thứ Tư','Thứ Năm','Thứ Sáu','Thứ Bảy'];
+    // Mapping: Mon->A, Tue->B, Wed->REST, Thu->A, Fri->B, Sat->C, Sun->REST
+    const DAY_PLAN = { 0:'REST', 1:'A', 2:'B', 3:'REST', 4:'A', 5:'B', 6:'C' };
+
+    function reducerFactory(exs){
+      return function r(s,a){
+        const cur = exs[s.current];
+        switch(a.type){
+          case 'LOAD': return { phase:'ready', current:0, remainingMs: ms(exs[0]?.durationSec||0) };
+          case 'START': return { phase:'work', current:0, remainingMs: ms(cur?.durationSec||0), startedAt: performance.now(), last:'work' };
+          case 'PAUSE': if(s.phase==='work'||s.phase==='rest') return { ...s, phase:'paused', startedAt: undefined }; return s;
+          case 'RESUME': if(s.phase==='paused') return { ...s, phase: s.last||'work', startedAt: performance.now() }; return s;
+          case 'TICK': {
+            if(!(s.phase==='work'||s.phase==='rest')) return s;
+            const el = a.now - (s.startedAt ?? a.now);
+            const rem = clamp(s.remainingMs - el, 0, 10*60*1000);
+            if(rem>0) return { ...s, remainingMs: rem, startedAt: a.now, last: s.phase };
+            if(s.phase==='work'){
+              const rrest = ms(cur?.restSec ?? 20);
+              if(rrest>0) return { phase:'rest', current:s.current, remainingMs: rrest, startedAt:a.now, last:'rest' };
+              const nx = s.current + 1;
+              if(nx>=exs.length) return { phase:'finished', current:s.current, remainingMs: 0 };
+              return { phase:'work', current:nx, remainingMs: ms(exs[nx].durationSec), startedAt:a.now, last:'work' };
+            } else {
+              const nx = s.current + 1;
+              if(nx>=exs.length) return { phase:'finished', current:s.current, remainingMs: 0 };
+              return { phase:'work', current:nx, remainingMs: ms(exs[nx].durationSec), startedAt:a.now, last:'work' };
+            }
+          }
+          case 'NEXT': {
+            const nx = clamp(s.current + 1, 0, exs.length);
+            if(nx>=exs.length) return { phase:'finished', current:s.current, remainingMs: 0 };
+            return { phase:'work', current:nx, remainingMs: ms(exs[nx].durationSec), startedAt: performance.now(), last:'work' };
+          }
+          case 'PREV': {
+            const pv = clamp(s.current - 1, 0, exs.length-1);
+            return { phase:'work', current:pv, remainingMs: ms(exs[pv].durationSec), startedAt: performance.now(), last:'work' };
+          }
+          case 'RESET': return { phase:'ready', current:0, remainingMs: ms(exs[0]?.durationSec||0) };
+          case 'JUMP': {
+            const i = clamp(a.index, 0, exs.length-1);
+            return { phase:'work', current:i, remainingMs: ms(exs[i].durationSec), startedAt: performance.now(), last:'work' };
+          }
+          default: return s;
+        }
+      }
+    }
+
+    function RestScreen({ todayName, dateStr, onOverride }){
+      const [phase, setPhase] = useState('Hít vào');
+      const [sec, setSec] = useState(4);
+
+      useEffect(() => {
+        let i = 0;
+        const steps = [
+          ['Hít vào', 4],
+          ['Nín thở', 4],
+          ['Thở ra', 4],
+          ['Nín thở', 4],
+        ];
+        const tick = () => {
+          const [p, s] = steps[i % steps.length];
+          setPhase(p); setSec(s);
+        };
+        tick();
+        const timer = setInterval(() => {
+          setSec(x => {
+            if (x > 1) return x - 1;
+            i++; tick();
+            return sec;
+          });
+        }, 1000);
+        return () => clearInterval(timer);
+      }, []);
+
+      return (
+        <div className="rounded-3xl border border-neutral-800 bg-neutral-900/60 overflow-hidden">
+          <div className="aspect-video bg-black grid place-items-center p-6">
+            <div className="text-center max-w-xl">
+              <div className="mx-auto w-40 h-40 rounded-full bg-emerald-500/20 grid place-items-center"
+                   style={{ animation:'breathe 8s ease-in-out infinite' }}>
+                <div className="text-2xl font-bold">{phase}</div>
+                <div className="text-sm tabular-nums">{sec}s</div>
+              </div>
+              <h2 className="text-xl font-semibold mt-4">Ngày nghỉ phục hồi 🎈</h2>
+              <p className="text-neutral-400 text-sm">
+                {todayName}, {dateStr}. Gợi ý: đi bộ 20–30 phút, uống đủ nước, ngủ đủ giấc.
+              </p>
+              <div className="mt-4 flex items-center justify-center gap-2 flex-wrap">
+                <button onClick={() => onOverride('A')}
+                        className="px-3 py-2 rounded-2xl bg-neutral-800 hover:bg-neutral-700 border border-neutral-700">Tôi vẫn muốn tập A</button>
+                <button onClick={() => onOverride('B')}
+                        className="px-3 py-2 rounded-2xl bg-neutral-800 hover:bg-neutral-700 border border-neutral-700">Tôi muốn tập B</button>
+                <button onClick={() => onOverride('C')}
+                        className="px-3 py-2 rounded-2xl bg-neutral-800 hover:bg-neutral-700 border border-neutral-700">Tôi muốn Mobility (C)</button>
+              </div>
+            </div>
+          </div>
+          <div className="p-4 text-center text-neutral-400 text-sm">
+            Fun tip: thử viết xuống <i>3 điều cảm ơn</i> hôm nay — vừa thư giãn vừa cải thiện giấc ngủ.
+          </div>
+        </div>
+      );
+    }
+
+    function App(){
+      const now = new Date();
+      const weekday = now.getDay(); // 0..6
+      const planKey = DAY_PLAN[weekday] || 'A';
+      const dateStr = now.toLocaleDateString('vi-VN');
+      const todayName = VN_DAY[weekday];
+
+      const [mode, setMode] = useState(planKey);
+      const wk = WORKOUTS.find(w => w.key === mode);
+      const isRest = mode === 'REST';
+
+      const exs = wk?.exercises ?? [];
+      const [s, d] = useReducer(reducerFactory(exs), { phase:'ready', current:0, remainingMs: ms(exs[0]?.durationSec||0) });
+
+      useEffect(() => {
+        if (isRest) return;
+        let raf=0,last=performance.now();
+        const loop = nowTs => {
+          if(s.phase==='work'||s.phase==='rest'){ d({type:'TICK', now: nowTs}); }
+          last = nowTs; raf = requestAnimationFrame(loop);
+        };
+        raf = requestAnimationFrame(loop);
+        return () => cancelAnimationFrame(raf);
+      }, [s.phase, s.remainingMs, mode]);
+
+      const cur = exs[s.current];
+      const nextEx = exs[s.current+1];
+      const total = s.phase==='rest' ? ms(cur?.restSec ?? 20) : ms(cur?.durationSec || 0);
+      const prog = total>0 ? 1 - Math.min(1, Math.max(0, s.remainingMs/total)) : 0;
+
+      return (
+        <div className="max-w-6xl mx-auto p-4 md:p-6">
+          <header className="flex items-center justify-between gap-3 mb-4">
+            <div>
+              <h1 className="text-2xl md:text-3xl font-bold">🏋️ Workout Player — Auto Schedule</h1>
+              <p className="text-neutral-400 text-sm">Hôm nay: <b>{todayName}</b> — {dateStr} · Kế hoạch: <b>{planKey}</b></p>
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-sm">
+                <span className="mr-2 text-neutral-400">Đổi buổi</span>
+                <select value={mode} onChange={(e)=>{ setMode(e.target.value); d({type:'RESET'}) }}
+                        className="bg-neutral-900 border border-neutral-700 rounded-lg px-2 py-1">
+                  <option value="A">A</option>
+                  <option value="B">B</option>
+                  <option value="C">C</option>
+                  <option value="REST">REST</option>
+                </select>
+              </label>
+            </div>
+          </header>
+
+          {isRest ? (
+            <RestScreen todayName={todayName} dateStr={dateStr} onOverride={(k)=>setMode(k)} />
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <aside className="md:col-span-1">
+                <div className="rounded-2xl border border-neutral-800 bg-neutral-900/50 p-3">
+                  <div className="flex items-center justify-between mb-3">
+                    <h2 className="font-semibold">{wk?.name}</h2>
+                    <span className="text-xs text-neutral-400">{s.current+1}/{exs.length}</span>
+                  </div>
+                  <ol className="space-y-2">
+                    {exs.map((ex, i) => {
+                      const active = i === s.current && ['work','rest','paused'].includes(s.phase);
+                      const done = i < s.current || s.phase === 'finished';
+                      return (
+                        <li key={ex.id} onClick={() => d({ type:'JUMP', index: i })}
+                            className={'cursor-pointer rounded-xl p-2 border ' + (active ? 'border-sky-500 bg-sky-950/20' : 'border-neutral-800 bg-neutral-900/40')}>
+                          <div className="flex items-center gap-2">
+                            <span className={'w-2.5 h-2.5 rounded-full '+ (done? 'bg-emerald-400' : active? 'bg-sky-400':'bg-neutral-600')}></span>
+                            <div className="flex-1">
+                              <div className="text-sm font-medium">{ex.title}</div>
+                              <div className="text-xs text-neutral-400">{ex.durationSec}s · Nghỉ {ex.restSec ?? 20}s</div>
+                            </div>
+                            <button className="text-xs px-2 py-1 rounded-lg border border-neutral-700">Nhảy</button>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                </div>
+              </aside>
+
+              <main className="md:col-span-2">
+                <div className="rounded-3xl border border-neutral-800 bg-neutral-900/60 overflow-hidden">
+                  <div className="aspect-video bg-black flex items-center justify-center">
+                    {s.phase !== 'finished' && cur ? (
+                      isYT(cur.videoUrl) ? (
+                        <iframe className="w-full h-full" src={toYT(cur.videoUrl)} title={cur.title}
+                                allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                allowfullscreen sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-presentation"></iframe>
+                      ) : cur.videoUrl ? (
+                        <video className="w-full h-full" src={cur.videoUrl} controls preload="metadata"
+                               onError={() => alert('Không phát được video. Hãy thay link khác.')}></video>
+                      ) : (
+                        <div className="text-neutral-400 text-center px-6">
+                          <p className="mb-2">Chưa có video cho bài: <b>{cur.title}</b></p>
+                          <p className="text-sm">Thêm URL YouTube/mp4 trong dữ liệu bài tập.</p>
+                        </div>
+                      )
+                    ) : (
+                      <div className="text-center text-emerald-400 font-semibold">Hoàn thành buổi tập 🎉</div>
+                    )}
+                  </div>
+
+                  <div className="p-4 md:p-6">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div>
+                        <div className="text-xs uppercase tracking-widest text-neutral-400">Trạng thái</div>
+                        <div className="text-lg font-semibold">
+                          {s.phase === 'ready' && 'Sẵn sàng'}
+                          {s.phase === 'work' && `Tập: ${cur?.title ?? ''}`}
+                          {s.phase === 'rest' && `Nghỉ · Sắp tới: ${nextEx?.title ?? '—'}`}
+                          {s.phase === 'paused' && `Tạm dừng: ${cur?.title ?? ''}`}
+                          {s.phase === 'finished' && 'Đã hoàn thành'}
+                        </div>
+                      </div>
+
+                      <div className="relative w-36 h-36">
+                        <svg className="-rotate-90 w-36 h-36" viewBox="0 0 100 100">
+                          <circle cx="50" cy="50" r="45" stroke="rgba(255,255,255,0.1)" strokeWidth="10" fill="none"></circle>
+                          <circle cx="50" cy="50" r="45" stroke="#22d3ee" strokeWidth="10" strokeLinecap="round" fill="none"
+                                  strokeDasharray={`${(2*Math.PI*45*(1-Math.max(0,Math.min(1,s.remainingMs/total))))} ${(2*Math.PI*45*(Math.max(0,Math.min(1,s.remainingMs/total))))}`}></circle>
+                        </svg>
+                        <div className="absolute inset-0 grid place-items-center">
+                          <div className="text-center">
+                            <div className="text-2xl font-bold tabular-nums" aria-live="polite">{fmt(s.remainingMs)}</div>
+                            <div className="text-[11px] uppercase tracking-wider text-neutral-400">
+                              {s.phase === 'rest' ? 'Rest' : s.phase === 'work' ? 'Work' : s.phase === 'paused' ? 'Paused' : 'Ready'}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 flex items-center gap-2 flex-wrap">
+                      {s.phase === 'ready' && (
+                        <button onClick={()=>d({type:'START'})} className="px-4 py-2 rounded-2xl bg-sky-600 hover:bg-sky-500 font-semibold">Bắt đầu</button>
+                      )}
+                      {s.phase !== 'ready' && s.phase !== 'finished' && (
+                        <>
+                          <button onClick={()=>d({type:'PAUSE'})} className="px-3 py-2 rounded-2xl bg-amber-600 hover:bg-amber-500 font-semibold">Tạm dừng</button>
+                          <button onClick={()=>d({type:'PREV'})} className="px-3 py-2 rounded-2xl bg-neutral-800 hover:bg-neutral-700 border border-neutral-700">Trước</button>
+                          <button onClick={()=>d({type:'NEXT'})} className="px-3 py-2 rounded-2xl bg-neutral-800 hover:bg-neutral-700 border border-neutral-700">Sau</button>
+                          <button onClick={()=>d({type:'RESET'})} className="px-3 py-2 rounded-2xl bg-neutral-800 hover:bg-neutral-700 border border-neutral-700">Reset</button>
+                        </>
+                      )}
+                      {s.phase === 'finished' && (
+                        <button onClick={()=>d({type:'RESET'})} className="px-4 py-2 rounded-2xl bg-sky-600 hover:bg-sky-500 font-semibold">Làm lại</button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </main>
+            </div>
+          )}
+
+          <footer className="text-center text-xs text-neutral-500 mt-6">
+            <p>Phím tắt: Space (Tạm dừng/Tiếp tục), ←/→ (Trước/Sau), R (Reset)</p>
+          </footer>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+  </script>
+</body>
+</html>
