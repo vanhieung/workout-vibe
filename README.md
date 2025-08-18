@@ -31,4 +31,4 @@ Train at home with **coaching videos**, a **countdown timer**, **auto‑advance*
 ---
 
 ## License
-**MIT** — use, remix, and share freely. Please credit original video creators where appropriate.
+**Apache-2.0 license** — use, remix, and share freely. Please credit original video creators where appropriate.
