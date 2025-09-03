@@ -398,6 +398,21 @@
       );
     }
 
+    function useSpeech(lang) {
+      const speak = (text) => {
+        try {
+          if (!window.speechSynthesis) return;
+          const utterance = new SpeechSynthesisUtterance(text);
+          utterance.lang = lang === 'vi' ? 'vi-VN' : 'en-US';
+          utterance.rate = 1.2;
+          window.speechSynthesis.speak(utterance);
+        } catch (e) {
+          console.error("Speech synthesis failed", e);
+        }
+      };
+      return { speak };
+    }
+
     // Player stays same as v4 (pause/continue, sounds, overflow, reorder)
     function reducerFactoryWrapper(exs){ return reducerFactory(exs); } // keep factory reference stable
 
@@ -410,7 +425,20 @@
       const dash1 = (2*Math.PI*45*(1-remRatio)), dash2 = (2*Math.PI*45*(remRatio));
 
       const beeps = useBeeps();
+      const { speak } = useSpeech(lang);
       const prevPhase = useRef(s.phase);
+      const prevRemainingSec = useRef(0);
+
+      useEffect(() => {
+        const remainingSec = Math.floor(s.remainingMs / 1000);
+        if (s.phase === 'work' && remainingSec !== prevRemainingSec.current) {
+          if (remainingSec === 3 || remainingSec === 2 || remainingSec === 1) {
+            speak(String(remainingSec));
+          }
+        }
+        prevRemainingSec.current = remainingSec;
+      }, [s.remainingMs, s.phase]);
+
       useEffect(()=>{
         let raf=0;
         const loop = nowTs => {
@@ -423,7 +451,7 @@
 
       useEffect(()=>{
         if (prevPhase.current==='work' && s.phase==='rest') beeps.endOfWork();
-        if (prevPhase.current==='work' && s.phase==='finished') beeps.workoutFinished();
+        if (prevPhase.current!=='finished' && s.phase==='finished') beeps.workoutFinished();
         prevPhase.current = s.phase;
       }, [s.phase]);
 
@@ -459,6 +487,18 @@
                 : 'bg-amber-500/20 text-amber-200 border-amber-400/30';
         const label = map[st] || map.unknown;
         return <span className={'text-[10px] px-2 py-[2px] rounded border ' + cls}>{label}</span>;
+      };
+
+      const isRestPhase = s.phase === 'rest';
+      const videoEx = isRestPhase && nextEx ? nextEx : cur;
+      const isAutoplay = isRestPhase && !!nextEx;
+
+      const getYTUrl = (url) => {
+        let finalUrl = toYT(url);
+        if (isAutoplay) {
+            finalUrl += (finalUrl.includes('?') ? '&' : '?') + 'autoplay=1&mute=1';
+        }
+        return finalUrl;
       };
 
       return (
@@ -515,17 +555,17 @@
           <main className="md:col-span-2">
             <div className="rounded-3xl border border-neutral-800 bg-neutral-900/60 overflow-hidden">
               <div className="aspect-video bg-black flex items-center justify-center">
-                {s.phase !== 'finished' && cur ? (
-                  isYT(cur.videoUrl) ? (
-                    <iframe className="w-full h-full" src={toYT(cur.videoUrl)} title={cur.title}
-                            allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                {s.phase !== 'finished' && videoEx ? (
+                  isYT(videoEx.videoUrl) ? (
+                    <iframe key={videoEx.id} className="w-full h-full" src={getYTUrl(videoEx.videoUrl)} title={localizeTitle(videoEx.title, lang)}
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                             allowfullscreen sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-presentation"></iframe>
-                  ) : cur.videoUrl ? (
-                    <video className="w-full h-full" src={cur.videoUrl} controls preload="metadata"
+                  ) : videoEx.videoUrl ? (
+                    <video key={videoEx.id} className="w-full h-full" src={videoEx.videoUrl} controls={!isAutoplay} autoPlay={isAutoplay} muted={isAutoplay} preload="metadata"
                            onError={() => alert(t.invalidVideo)}></video>
                   ) : (
                     <div className="text-neutral-400 text-center px-6">
-                      <p className="mb-2">{lang==='vi'?'Chưa có video cho bài:':'No video for exercise:'} <b>{localizeTitle(cur.title, lang)}</b></p>
+                      <p className="mb-2">{lang==='vi'?'Chưa có video cho bài:':'No video for exercise:'} <b>{localizeTitle(videoEx.title, lang)}</b></p>
                       <p className="text-sm">{lang==='vi'?'Thêm URL YouTube/mp4 trong dữ liệu bài tập.':'Add a YouTube/mp4 URL in your workout data.'}</p>
                     </div>
                   )
