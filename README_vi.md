@@ -8,7 +8,9 @@ Web app giúp tập tại nhà với **video hướng dẫn + đồng hồ đế
 - 🔔 (React) Beep 3–2–1 trước khi hết set.
 - 💾 (React) Import/Export JSON bài tập, lưu `localStorage`.
 - 🗓️ (HTML) **Auto Schedule** theo thứ trong tuần (Mon→A, Tue→B, Wed→REST, Thu→A, Fri→B, Sat→C, Sun→REST).
-- ⌨️ Phím tắt: `Space` (Pause/Resume), `←/→` (Prev/Next), `R` (Reset).
+- - **Tín hiệu âm thanh:** Đếm ngược "3, 2, 1" trước khi kết thúc mỗi bài tập.
+- **Tự động phát:** Tự động phát video hướng dẫn cho bài tập tiếp theo trong thời gian nghỉ.
+- **Phím tắt:** Space để tạm dừng/tiếp tục, phím mũi tên để điều hướng.
 
 ## Giấy phép
 **Apache-2.0 license** — tự do sử dụng & tuỳ biến. Vui lòng ghi nguồn video khi cần.

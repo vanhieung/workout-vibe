@@ -10,7 +10,9 @@ Train at home with **coaching videos**, a **countdown timer**, **auto‑advance*
 - 🔔 (React app) Optional 3‑2‑1 beeps near the end of each set.
 - 💾 (React app) Import/Export workout JSON and persist to `localStorage`.
 - 🗓️ (HTML demo) **Auto Schedule** by weekday (Mon→A, Tue→B, Wed→REST, Thu→A, Fri→B, Sat→C, Sun→REST).
-- ⌨️ Shortcuts: `Space` (Pause/Resume), `←/→` (Prev/Next), `R` (Reset).
+- **Audio Cues:** Announces a "3, 2, 1" countdown before the end of each exercise.
+- **Autoplay:** Automatically plays the tutorial video for the next exercise during rest periods.
+- **Keyboard Shortcuts:** Space to pause/resume, arrow keys to navigate.
 - ♿ Accessible labels, numeric **tabular** font for timers.
 
 ---
