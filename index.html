@@ -1,462 +1,231 @@
 <!DOCTYPE html>
 <html lang="vi">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Workout Player — Auto Schedule (vi/en, v5)</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    html, body { background:#0a0a0a; color:#e5e5e5; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, 'Helvetica Neue', Arial; }
-    .tabular-nums { font-variant-numeric: tabular-nums; }
-    @keyframes breathe { 0%{transform:scale(.9);opacity:.9}25%{transform:scale(1.05);opacity:1}50%{transform:scale(1.08);opacity:1}75%{transform:scale(.95);opacity:.95}100%{transform:scale(.9);opacity:.9}}
-    ::-webkit-scrollbar { width: 10px; }
-    ::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 8px; }
-    ::-webkit-scrollbar-track { background: #121212; }
-  </style>
-</head>
-<body>
-  <div id="root"></div>
-
-  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
-  <script type="text/babel">
-    const { useEffect, useMemo, useReducer, useState, useRef } = React;
-
-    // ---------- i18n ----------
-    const LS_LANG = 'wp.lang.v1';
-    const LANGS = ['vi','en'];
-    const L = {
-      vi: {
-        appTitle: '🏋️ Trình phát luyện tập — Tự chọn buổi',
-        subtitle: (dayName, dateStr, planKey) => `Hôm nay: ${dayName} — ${dateStr} · Kế hoạch: ${planKey}`,
-        dayNames: ['Chủ Nhật','Thứ Hai','Thứ Ba','Thứ Tư','Thứ Năm','Thứ Sáu','Thứ Bảy'],
-        labels: {
-          changeSession: 'Đổi buổi',
-          language: 'Ngôn ngữ',
-          ready: 'Sẵn sàng',
-          work: (title) => `Tập: ${title}`,
-          rest: (nextTitle) => `Nghỉ · Sắp tới: ${nextTitle}`,
-          paused: (title) => `Tạm dừng: ${title}`,
-          finished: 'Đã hoàn thành',
-          start: 'Bắt đầu',
-          pause: 'Tạm dừng',
-          continue: 'Tiếp tục',
-          prev: 'Trước',
-          next: 'Sau',
-          reset: 'Reset',
-          restScreenTitle: 'Ngày nghỉ phục hồi 🎈',
-          restScreenTip: (dayName, dateStr) => `${dayName}, ${dateStr}. Gợi ý: đi bộ 20–30 phút, uống đủ nước, ngủ đủ giấc.`,
-          restOverrideA: 'Tôi vẫn muốn tập A',
-          restOverrideB: 'Tôi muốn tập B',
-          restOverrideC: 'Tôi muốn Mobility (C)',
-          shortcuts: 'Phím tắt: Space (Tạm dừng/Tiếp tục), ←/→ (Trước/Sau), R (Reset)',
-          workLabel: 'Work', restLabel: 'Rest', pausedLabel: 'Paused', readyLabel: 'Ready',
-          jump: 'Nhảy',
-          moveUp: 'Lên',
-          moveDown: 'Xuống',
-          open: 'Mở',
-          status: 'Trạng thái',
-          durationRest: (d, r) => `${d}s · Nghỉ ${r}s`,
-          done: 'Hoàn thành',
-          videoBadges: { yt:'YouTube', mp4:'MP4', ok:'OK', missing:'Thiếu', unknown:'?' },
-          invalidVideo: 'Không phát được video. Hãy thay link khác.'
-        },
-        sessions: {
-          A: 'Buổi A — Đẩy + Hinge (30’)',
-          B: 'Buổi B — Kéo + Vai + Hông (30’)',
-          C: 'Buổi C — Toàn thân + Mobility (30’)',
-          REST: 'Nghỉ'
-        },
-      },
-      en: {
-        appTitle: '🏋️ Workout Player — Auto Schedule',
-        subtitle: (dayName, dateStr, planKey) => `Today: ${dayName} — ${dateStr} · Plan: ${planKey}`,
-        dayNames: ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'],
-        labels: {
-          changeSession: 'Change session',
-          language: 'Language',
-          ready: 'Ready',
-          work: (title) => `Work: ${title}`,
-          rest: (nextTitle) => `Rest · Next: ${nextTitle}`,
-          paused: (title) => `Paused: ${title}`,
-          finished: 'Completed',
-          start: 'Start',
-          pause: 'Pause',
-          continue: 'Continue',
-          prev: 'Prev',
-          next: 'Next',
-          reset: 'Reset',
-          restScreenTitle: 'Recovery Day 🎈',
-          restScreenTip: (dayName, dateStr) => `${dayName}, ${dateStr}. Suggestions: 20–30 min walk, hydrate, sleep well.`,
-          restOverrideA: 'I still want Session A',
-          restOverrideB: 'I want Session B',
-          restOverrideC: 'I want Mobility (C)',
-          shortcuts: 'Shortcuts: Space (Pause/Continue), ←/→ (Prev/Next), R (Reset)',
-          workLabel: 'Work', restLabel: 'Rest', pausedLabel: 'Paused', readyLabel: 'Ready',
-          jump: 'Jump',
-          moveUp: 'Up',
-          moveDown: 'Down',
-          open: 'Open',
-          status: 'Status',
-          durationRest: (d, r) => `${d}s · Rest ${r}s`,
-          done: 'Done',
-          videoBadges: { yt:'YouTube', mp4:'MP4', ok:'OK', missing:'Missing', unknown:'?' },
-          invalidVideo: 'Cannot play video. Please replace the link.'
-        },
-        sessions: {
-          A: 'Session A — Push + Hinge (30’)',
-          B: 'Session B — Pull + Shoulders + Hips (30’)',
-          C: 'Session C — Full Body + Mobility (30’)',
-          REST: 'REST'
-        },
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Workout Player — Auto Schedule (vi/en, v5)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      html,
+      body {
+        background: #0a0a0a;
+        color: #e5e5e5;
+        font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu,
+          Cantarell, 'Helvetica Neue', Arial;
       }
-    };
-    const loadLang = () => {
-      const v = (localStorage.getItem(LS_LANG) || '').trim();
-      return LANGS.includes(v) ? v : (navigator.language||'vi').startsWith('vi') ? 'vi' : 'en';
-    };
-    const saveLang = (lang) => { try { localStorage.setItem(LS_LANG, lang); } catch {} };
-
-    // ---------- Utils ----------
-    const clamp = (n, min, max) => Math.min(Math.max(n, min), max);
-    const ms = (s) => Math.max(0, Math.round(s * 1000));
-    const fmt = (msLeft) => {
-      const t = Math.max(0, Math.floor(msLeft/1000));
-      const m = Math.floor(t/60), s = t%60;
-      return String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');
-    };
-    const isYT = (u) => !!u && /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\//i.test(u);
-    const isFileVideo = (u) => !!u && /\.(mp4|webm|ogg)(\?.*)?$/i.test(u);
-    const urlStatus = (u) => {
-      if (!u) return 'missing';
-      if (isYT(u)) return 'yt';
-      if (isFileVideo(u)) return 'mp4';
-      return 'unknown';
-    }
-    const toYT = (u) => {
-      try {
-        const x = new URL(u);
-        if (x.hostname.includes('youtube.com') && x.pathname === '/watch') {
-          const v = x.searchParams.get('v');
-          return v ? `https://www.youtube.com/embed/${v}` : u;
+      .tabular-nums {
+        font-variant-numeric: tabular-nums;
+      }
+      @keyframes breathe {
+        0% {
+          transform: scale(0.9);
+          opacity: 0.9;
         }
-        if (x.hostname === 'youtu.be') {
-          const id = x.pathname.replace('/','');
-          return `https://www.youtube.com/embed/${id}`;
+        25% {
+          transform: scale(1.05);
+          opacity: 1;
         }
-        return u;
-      } catch { return u; }
-    };
-    function localizeTitle(title, lang){
-      if(lang==='vi') return title;
-      return title
-        .replace('Khởi động động (toàn thân)', 'Dynamic Warm-up (full body)')
-        .replace('Đẩy + Hinge', 'Push + Hinge')
-        .replace('Kéo + Vai + Hông', 'Pull + Shoulders + Hips')
-        .replace('Toàn thân + Mobility', 'Full Body + Mobility')
-        .replace('Nghỉ', 'REST')
-        .replace('— Trái', '— Left')
-        .replace('— Phải', '— Right')
-        .replace('Mobility kết thúc', 'Cooldown Mobility')
-        .replace('Cossack Squat (giãn)', 'Cossack Squat (mobility)')
-        .replace('Hông', 'Hips');
-    }
-
-    // ---------- Workouts (refreshed YouTube links) ----------
-    const LINKS = {
-      // Reputable tutorials checked 2025-08-20
-      warmup: 'https://www.youtube.com/watch?v=3qyWpJ34dWw', // 5-min dynamic warm-up (Well+Good style)
-      goblet: 'https://www.youtube.com/watch?v=MeIiIdhvXT4',
-      floorPress: 'https://www.youtube.com/watch?v=uUGDRwge4F8',
-      rdl: 'https://www.youtube.com/watch?v=FQKfr1YDhEk',
-      dbRow: 'https://www.youtube.com/watch?v=roCP6wCXPqo',
-      plank: 'https://www.youtube.com/watch?v=pSHjTRCQxIw',
-      deadbug: 'https://www.youtube.com/watch?v=bxn9FBrt4-A',
-      cooldown: 'https://www.youtube.com/watch?v=lxuTCHJSers',
-      reverseLunge: 'https://www.youtube.com/watch?v=C_P3Q-PssvY',
-      halfKneelPress: 'https://www.youtube.com/watch?v=2WoOrh3dqss',
-      gluteBridge: 'https://www.youtube.com/watch?v=wPM8icPu6H8',
-      sidePlank: 'https://www.youtube.com/watch?v=K2VljzCC16g',
-      thruster: 'https://www.youtube.com/watch?v=M5gEwLTtWbg',
-      hingeRow: 'https://www.youtube.com/watch?v=o66ZYpIFr4g',
-      lateralLunge: 'https://www.youtube.com/watch?v=MvpBUsQrt_4',
-      pikeWalkout: 'https://www.youtube.com/watch?v=G-2oFuWRgNI',
-      cossack: 'https://www.youtube.com/watch?v=JaCbmoDqUc4',
-      hip90: 'https://www.youtube.com/watch?v=t4Zz6-aG8Iw',
-      hamstring: 'https://www.youtube.com/watch?v=LVY692zJK0A',
-      pecStretch: 'https://www.youtube.com/watch?v=M850sCj9LHQ',
-    };
-
-    const WORKOUTS_BASE = [
-      {
-        key: 'A',
-        name: 'Buổi A — Đẩy + Hinge (30’)',
-        exercises: [
-          { id:'wu', title:'Khởi động động (toàn thân)', durationSec:240, restSec:20, videoUrl: LINKS.warmup },
-          { id:'gs1', title:'Goblet Squat', durationSec:50, restSec:20, videoUrl: LINKS.goblet },
-          { id:'fp1', title:'DB Floor Press', durationSec:50, restSec:25, videoUrl: LINKS.floorPress },
-          { id:'rdl1', title:'DB Romanian Deadlift', durationSec:50, restSec:20, videoUrl: LINKS.rdl },
-          { id:'rowL1', title:'1-Arm DB Row — Trái', durationSec:45, restSec:10, videoUrl: LINKS.dbRow },
-          { id:'rowR1', title:'1-Arm DB Row — Phải', durationSec:45, restSec:25, videoUrl: LINKS.dbRow },
-          { id:'gs2', title:'Goblet Squat', durationSec:50, restSec:20, videoUrl: LINKS.goblet },
-          { id:'fp2', title:'DB Floor Press', durationSec:50, restSec:25, videoUrl: LINKS.floorPress },
-          { id:'rdl2', title:'DB Romanian Deadlift', durationSec:50, restSec:20, videoUrl: LINKS.rdl },
-          { id:'rowL2', title:'1-Arm DB Row — Trái', durationSec:45, restSec:10, videoUrl: LINKS.dbRow },
-          { id:'rowR2', title:'1-Arm DB Row — Phải', durationSec:45, restSec:25, videoUrl: LINKS.dbRow },
-          { id:'gs3', title:'Goblet Squat', durationSec:50, restSec:20, videoUrl: LINKS.goblet },
-          { id:'fp3', title:'DB Floor Press', durationSec:50, restSec:25, videoUrl: LINKS.floorPress },
-          { id:'rdl3', title:'DB Romanian Deadlift', durationSec:50, restSec:20, videoUrl: LINKS.rdl },
-          { id:'rowL3', title:'1-Arm DB Row — Trái', durationSec:45, restSec:10, videoUrl: LINKS.dbRow },
-          { id:'rowR3', title:'1-Arm DB Row — Phải', durationSec:45, restSec:25, videoUrl: LINKS.dbRow },
-          { id:'plk', title:'Front Plank', durationSec:60, restSec:20, videoUrl: LINKS.plank },
-          { id:'dbug', title:'Dead Bug', durationSec:60, restSec:20, videoUrl: LINKS.deadbug },
-          { id:'mob', title:'Mobility kết thúc', durationSec:210, restSec:0, videoUrl: LINKS.cooldown },
-        ]
-      },
-      {
-        key: 'B',
-        name: 'Buổi B — Kéo + Vai + Hông (30’)',
-        exercises: [
-          { id:'wu', title:'Khởi động động (toàn thân)', durationSec:240, restSec:20, videoUrl: LINKS.warmup },
-          { id:'lnL1', title:'Reverse Lunge — Trái', durationSec:45, restSec:10, videoUrl: LINKS.reverseLunge },
-          { id:'lnR1', title:'Reverse Lunge — Phải', durationSec:45, restSec:20, videoUrl: LINKS.reverseLunge },
-          { id:'rowL1', title:'1-Arm DB Row — Trái', durationSec:45, restSec:10, videoUrl: LINKS.dbRow },
-          { id:'rowR1', title:'1-Arm DB Row — Phải', durationSec:45, restSec:25, videoUrl: LINKS.dbRow },
-          { id:'prsL1', title:'Half-kneeling DB Press — Trái', durationSec:45, restSec:10, videoUrl: LINKS.halfKneelPress },
-          { id:'prsR1', title:'Half-kneeling DB Press — Phải', durationSec:45, restSec:25, videoUrl: LINKS.halfKneelPress },
-          { id:'bridge1', title:'Glute Bridge', durationSec:60, restSec:20, videoUrl: LINKS.gluteBridge },
-          { id:'lnL2', title:'Reverse Lunge — Trái', durationSec:45, restSec:10, videoUrl: LINKS.reverseLunge },
-          { id:'lnR2', title:'Reverse Lunge — Phải', durationSec:45, restSec:20, videoUrl: LINKS.reverseLunge },
-          { id:'rowL2', title:'1-Arm DB Row — Trái', durationSec:45, restSec:10, videoUrl: LINKS.dbRow },
-          { id:'rowR2', title:'1-Arm DB Row — Phải', durationSec:45, restSec:25, videoUrl: LINKS.dbRow },
-          { id:'prsL2', title:'Half-kneeling DB Press — Trái', durationSec:45, restSec:10, videoUrl: LINKS.halfKneelPress },
-          { id:'prsR2', title:'Half-kneeling DB Press — Phải', durationSec:45, restSec:25, videoUrl: LINKS.halfKneelPress },
-          { id:'bridge2', title:'Glute Bridge', durationSec:60, restSec:20, videoUrl: LINKS.gluteBridge },
-          { id:'lnL3', title:'Reverse Lunge — Trái', durationSec:45, restSec:10, videoUrl: LINKS.reverseLunge },
-          { id:'lnR3', title:'Reverse Lunge — Phải', durationSec:45, restSec:20, videoUrl: LINKS.reverseLunge },
-          { id:'rowL3', title:'1-Arm DB Row — Trái', durationSec:45, restSec:10, videoUrl: LINKS.dbRow },
-          { id:'rowR3', title:'1-Arm DB Row — Phải', durationSec:45, restSec:25, videoUrl: LINKS.dbRow },
-          { id:'prsL3', title:'Half-kneeling DB Press — Trái', durationSec:45, restSec:10, videoUrl: LINKS.halfKneelPress },
-          { id:'prsR3', title:'Half-kneeling DB Press — Phải', durationSec:45, restSec:25, videoUrl: LINKS.halfKneelPress },
-          { id:'bridge3', title:'Glute Bridge', durationSec:60, restSec:20, videoUrl: LINKS.gluteBridge },
-          { id:'dbug', title:'Dead Bug', durationSec:60, restSec:20, videoUrl: LINKS.deadbug },
-          { id:'splL', title:'Side Plank — Trái', durationSec:40, restSec:10, videoUrl: LINKS.sidePlank },
-          { id:'splR', title:'Side Plank — Phải', durationSec:40, restSec:20, videoUrl: LINKS.sidePlank },
-          { id:'mob', title:'Mobility kết thúc', durationSec:180, restSec:0, videoUrl: LINKS.cooldown },
-        ]
-      },
-      {
-        key: 'C',
-        name: 'Buổi C — Toàn thân + Mobility (30’)',
-        exercises: [
-          { id:'wu', title:'Khởi động động (toàn thân)', durationSec:240, restSec:20, videoUrl: LINKS.warmup },
-          { id:'thr1', title:'DB Thruster', durationSec:45, restSec:25, videoUrl: LINKS.thruster },
-          { id:'hrow1', title:'Hinge to Row (DB)', durationSec:50, restSec:20, videoUrl: LINKS.hingeRow },
-          { id:'latL1', title:'Lateral Lunge — Trái', durationSec:45, restSec:10, videoUrl: LINKS.lateralLunge },
-          { id:'latR1', title:'Lateral Lunge — Phải', durationSec:45, restSec:25, videoUrl: LINKS.lateralLunge },
-          { id:'walk1', title:'Pike Walkout → Plank', durationSec:45, restSec:30, videoUrl: LINKS.pikeWalkout },
-          { id:'thr2', title:'DB Thruster', durationSec:45, restSec:25, videoUrl: LINKS.thruster },
-          { id:'hrow2', title:'Hinge to Row (DB)', durationSec:50, restSec:20, videoUrl: LINKS.hingeRow },
-          { id:'latL2', title:'Lateral Lunge — Trái', durationSec:45, restSec:10, videoUrl: LINKS.lateralLunge },
-          { id:'latR2', title:'Lateral Lunge — Phải', durationSec:45, restSec:25, videoUrl: LINKS.lateralLunge },
-          { id:'walk2', title:'Pike Walkout → Plank', durationSec:45, restSec:30, videoUrl: LINKS.pikeWalkout },
-          { id:'thr3', title:'DB Thruster', durationSec:45, restSec:25, videoUrl: LINKS.thruster },
-          { id:'hrow3', title:'Hinge to Row (DB)', durationSec:50, restSec:20, videoUrl: LINKS.hingeRow },
-          { id:'latL3', title:'Lateral Lunge — Trái', durationSec:45, restSec:10, videoUrl: LINKS.lateralLunge },
-          { id:'latR3', title:'Lateral Lunge — Phải', durationSec:45, restSec:25, videoUrl: LINKS.lateralLunge },
-          { id:'walk3', title:'Pike Walkout → Plank', durationSec:45, restSec:30, videoUrl: LINKS.pikeWalkout },
-          { id:'cos', title:'Cossack Squat (giãn)', durationSec:60, restSec:20, videoUrl: LINKS.cossack },
-          { id:'hipL', title:'90/90 Hips — Trái', durationSec:45, restSec:10, videoUrl: LINKS.hip90 },
-          { id:'hipR', title:'90/90 Hips — Phải', durationSec:45, restSec:20, videoUrl: LINKS.hip90 },
-          { id:'ham', title:'Hamstring Stretch', durationSec:60, restSec:15, videoUrl: LINKS.hamstring },
-          { id:'pec', title:'Pec Stretch (cửa/tường)', durationSec:60, restSec:0, videoUrl: LINKS.pecStretch },
-        ]
-      },
-    ];
-
-    // ---------- Auto schedule ----------
-    // 0=Sun..6=Sat -> Sunday REST as requested.
-    const DAY_PLAN = { 0:'REST', 1:'A', 2:'B', 3:'C', 4:'A', 5:'B', 6:'C' };
-
-    function reducerFactory(exs){
-      return function r(s,a){
-        const cur = exs[s.current];
-        switch(a.type){
-          case 'LOAD': return { phase:'ready', current:0, remainingMs: ms(exs[0]?.durationSec||0) };
-          case 'START': return { phase:'work', current:0, remainingMs: ms(cur?.durationSec||0), startedAt: performance.now(), last:'work' };
-          case 'PAUSE': if(s.phase==='work'||s.phase==='rest') return { ...s, phase:'paused', startedAt: undefined }; return s;
-          case 'RESUME': if(s.phase==='paused') return { ...s, phase: s.last||'work', startedAt: performance.now() }; return s;
-          case 'TICK': {
-            if(!(s.phase==='work'||s.phase==='rest')) return s;
-            const el = a.now - (s.startedAt ?? a.now);
-            const rem = Math.max(0, s.remainingMs - el);
-            if(rem>0) return { ...s, remainingMs: rem, startedAt: a.now, last: s.phase };
-            if(s.phase==='work'){
-              const rrest = ms(cur?.restSec ?? 20);
-              if(rrest>0) return { phase:'rest', current:s.current, remainingMs: rrest, startedAt:a.now, last:'rest' };
-              const nx = s.current + 1;
-              if(nx>=exs.length) return { phase:'finished', current:s.current, remainingMs: 0 };
-              return { phase:'work', current:nx, remainingMs: ms(exs[nx].durationSec), startedAt:a.now, last:'work' };
-            } else {
-              const nx = s.current + 1;
-              if(nx>=exs.length) return { phase:'finished', current:s.current, remainingMs: 0 };
-              return { phase:'work', current:nx, remainingMs: ms(exs[nx].durationSec), startedAt:a.now, last:'work' };
-            }
-          }
-          case 'NEXT': {
-            const nx = Math.min(s.current + 1, exs.length);
-            if(nx>=exs.length) return { phase:'finished', current:s.current, remainingMs: 0 };
-            return { phase:'work', current:nx, remainingMs: ms(exs[nx].durationSec), startedAt: performance.now(), last:'work' };
-          }
-          case 'PREV': {
-            const pv = Math.max(s.current - 1, 0);
-            return { phase:'work', current:pv, remainingMs: ms(exs[pv].durationSec), startedAt: performance.now(), last:'work' };
-          }
-          case 'RESET': return { phase:'ready', current:0, remainingMs: ms(exs[0]?.durationSec||0) };
-          case 'JUMP': {
-            const i = Math.max(0, Math.min(a.index, exs.length-1));
-            return { phase:'work', current:i, remainingMs: ms(exs[i].durationSec), startedAt: performance.now(), last:'work' };
-          }
-          default: return s;
+        50% {
+          transform: scale(1.08);
+          opacity: 1;
+        }
+        75% {
+          transform: scale(0.95);
+          opacity: 0.95;
+        }
+        100% {
+          transform: scale(0.9);
+          opacity: 0.9;
         }
       }
-    }
+      ::-webkit-scrollbar {
+        width: 10px;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #2a2a2a;
+        border-radius: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #121212;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
 
-    function useBeeps(){
-      const ctxRef = useRef(null);
-      const ensure = () => {
-        if (!ctxRef.current) {
-          const AC = window.AudioContext || window.webkitAudioContext;
-          if (AC) ctxRef.current = new AC();
-        }
-        return ctxRef.current;
+    <script
+      src="https://unpkg.com/react@18/umd/react.production.min.js"
+      crossorigin
+    ></script>
+    <script
+      src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"
+      crossorigin
+    ></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <script type="text/babel">
+      const { useEffect, useMemo, useReducer, useState, useRef } = React;
+
+      // ---------- i18n ----------
+      const LS_LANG = 'wp.lang.v1';
+      const LANGS = ['vi', 'en'];
+      const L = {
+        vi: {
+          appTitle: '🏋️ Trình phát luyện tập — Tự chọn buổi',
+          subtitle: (dayName, dateStr, planKey) =>
+            `Hôm nay: ${dayName} — ${dateStr} · Kế hoạch: ${planKey}`,
+          dayNames: [
+            'Chủ Nhật',
+            'Thứ Hai',
+            'Thứ Ba',
+            'Thứ Tư',
+            'Thứ Năm',
+            'Thứ Sáu',
+            'Thứ Bảy',
+          ],
+          labels: {
+            changeSession: 'Đổi buổi',
+            language: 'Ngôn ngữ',
+            ready: 'Sẵn sàng',
+            work: (title) => `Tập: ${title}`,
+            rest: (nextTitle) => `Nghỉ · Sắp tới: ${nextTitle}`,
+            paused: (title) => `Tạm dừng: ${title}`,
+            finished: 'Đã hoàn thành',
+            start: 'Bắt đầu',
+            pause: 'Tạm dừng',
+            continue: 'Tiếp tục',
+            prev: 'Trước',
+            next: 'Sau',
+            reset: 'Reset',
+            restScreenTitle: 'Ngày nghỉ phục hồi 🎈',
+            restScreenTip: (dayName, dateStr) =>
+              `${dayName}, ${dateStr}. Gợi ý: đi bộ 20–30 phút, uống đủ nước, ngủ đủ giấc.`,
+            restOverrideA: 'Tôi vẫn muốn tập A',
+            restOverrideB: 'Tôi muốn tập B',
+            restOverrideC: 'Tôi muốn Mobility (C)',
+            shortcuts:
+              'Phím tắt: Space (Tạm dừng/Tiếp tục), ←/→ (Trước/Sau), R (Reset)',
+            workLabel: 'Work',
+            restLabel: 'Rest',
+            pausedLabel: 'Paused',
+            readyLabel: 'Ready',
+            jump: 'Nhảy',
+            moveUp: 'Lên',
+            moveDown: 'Xuống',
+            open: 'Mở',
+            status: 'Trạng thái',
+            durationRest: (d, r) => `${d}s · Nghỉ ${r}s`,
+            done: 'Hoàn thành',
+            videoBadges: {
+              yt: 'YouTube',
+              mp4: 'MP4',
+              ok: 'OK',
+              missing: 'Thiếu',
+              unknown: '?',
+            },
+            invalidVideo: 'Không phát được video. Hãy thay link khác.',
+            totalTime: 'Tổng thời gian',
+            totalTimeElapsed: (time) => `Tổng: ${time}`,
+            finalTotalTime: (time) => `Hoàn thành trong: ${time}`,
+          },
+          sessions: {
+            A: 'Buổi A — Đẩy + Hinge (30’)',
+            B: 'Buổi B — Kéo + Vai + Hông (30’)',
+            C: 'Buổi C — Toàn thân + Mobility (30’)',
+            REST: 'Nghỉ',
+          },
+        },
+        en: {
+          appTitle: '🏋️ Workout Player — Auto Schedule',
+          subtitle: (dayName, dateStr, planKey) =>
+            `Today: ${dayName} — ${dateStr} · Plan: ${planKey}`,
+          dayNames: [
+            'Sunday',
+            'Monday',
+            'Tuesday',
+            'Wednesday',
+            'Thursday',
+            'Friday',
+            'Saturday',
+          ],
+          labels: {
+            changeSession: 'Change session',
+            language: 'Language',
+            ready: 'Ready',
+            work: (title) => `Work: ${title}`,
+            rest: (nextTitle) => `Rest · Next: ${nextTitle}`,
+            paused: (title) => `Paused: ${title}`,
+            finished: 'Completed',
+            start: 'Start',
+            pause: 'Pause',
+            continue: 'Continue',
+            prev: 'Prev',
+            next: 'Next',
+            reset: 'Reset',
+            restScreenTitle: 'Recovery Day 🎈',
+            restScreenTip: (dayName, dateStr) =>
+              `${dayName}, ${dateStr}. Suggestions: 20–30 min walk, hydrate, sleep well.`,
+            restOverrideA: 'I still want Session A',
+            restOverrideB: 'I want Session B',
+            restOverrideC: 'I want Mobility (C)',
+            shortcuts:
+              'Shortcuts: Space (Pause/Continue), ←/→ (Prev/Next), R (Reset)',
+            workLabel: 'Work',
+            restLabel: 'Rest',
+            pausedLabel: 'Paused',
+            readyLabel: 'Ready',
+            jump: 'Jump',
+            moveUp: 'Up',
+            moveDown: 'Down',
+            open: 'Open',
+            status: 'Status',
+            durationRest: (d, r) => `${d}s · Rest ${r}s`,
+            done: 'Done',
+            videoBadges: {
+              yt: 'YouTube',
+              mp4: 'MP4',
+              ok: 'OK',
+              missing: 'Missing',
+              unknown: '?',
+            },
+            invalidVideo: 'Cannot play video. Please replace the link.',
+            totalTime: 'Total Time',
+            totalTimeElapsed: (time) => `Total: ${time}`,
+            finalTotalTime: (time) => `Completed in: ${time}`,
+          },
+          sessions: {
+            A: 'Session A — Push + Hinge (30’)',
+            B: 'Session B — Pull + Shoulders + Hips (30’)',
+            C: 'Session C — Full Body + Mobility (30’)',
+            REST: 'REST',
+          },
+        },
       };
-      const tone = (f=880, dur=0.15) => {
-        const ctx = ensure(); if (!ctx) return;
-        const now = ctx.currentTime;
-        const o = ctx.createOscillator();
-        const g = ctx.createGain();
-        o.type = 'sine'; o.frequency.value = f;
-        o.connect(g); g.connect(ctx.destination);
-        g.gain.setValueAtTime(0.0001, now);
-        g.gain.exponentialRampToValueAtTime(0.25, now+0.01);
-        g.gain.exponentialRampToValueAtTime(0.0001, now+dur);
-        o.start(now); o.stop(now+dur);
+      const loadLang = () => {
+        const v = (localStorage.getItem(LS_LANG) || '').trim();
+        return LANGS.includes(v)
+          ? v
+          : (navigator.language || 'vi').startsWith('vi')
+          ? 'vi'
+          : 'en';
       };
-      const endOfWork = () => { tone(880,0.12); setTimeout(()=>tone(660,0.12),150); setTimeout(()=>tone(520,0.18),320); };
-      const workoutFinished = () => { tone(660,0.2); setTimeout(()=>tone(880,0.25),230); setTimeout(()=>tone(990,0.3),500); };
-      return { ensure, endOfWork, workoutFinished };
-    }
-
-    function RestScreen({ lang, todayName, dateStr, onOverride }){
-      const t = L[lang].labels;
-      const [phase, setPhase] = useState(lang==='vi'?'Hít vào':'Inhale');
-      const [sec, setSec] = useState(4);
-      useEffect(() => {
-        let i = 0;
-        const steps = lang==='vi'
-          ? [['Hít vào',4],['Nín thở',4],['Thở ra',4],['Nín thở',4]]
-          : [['Inhale',4],['Hold',4],['Exhale',4],['Hold',4]];
-        const tick = () => { const [p, s] = steps[i % steps.length]; setPhase(p); setSec(s); };
-        tick();
-        const timer = setInterval(() => {
-          setSec(x => {
-            if (x > 1) return x - 1;
-            i++; tick();
-            return sec;
-          });
-        }, 1000);
-        return () => clearInterval(timer);
-      }, [lang]);
-      return (
-        <div className="rounded-3xl border border-neutral-800 bg-neutral-900/60 overflow-hidden">
-          <div className="aspect-video bg-black grid place-items-center p-6">
-            <div className="text-center max-w-xl">
-              <div className="mx-auto w-40 h-40 rounded-full bg-emerald-500/20 grid place-items-center"
-                   style={{ animation:'breathe 8s ease-in-out infinite' }}>
-                <div className="text-2xl font-bold">{phase}</div>
-                <div className="text-sm tabular-nums">{sec}s</div>
-              </div>
-              <h2 className="text-xl font-semibold mt-4">{t.restScreenTitle}</h2>
-              <p className="text-neutral-400 text-sm">{t.restScreenTip(todayName, dateStr)}</p>
-              <div className="mt-4 flex items-center justify-center gap-2 flex-wrap">
-                <button onClick={() => onOverride('A')}
-                        className="px-3 py-2 rounded-2xl bg-neutral-800 hover:bg-neutral-700 border border-neutral-700">{t.restOverrideA}</button>
-                <button onClick={() => onOverride('B')}
-                        className="px-3 py-2 rounded-2xl bg-neutral-800 hover:bg-neutral-700 border border-neutral-700">{t.restOverrideB}</button>
-                <button onClick={() => onOverride('C')}
-                        className="px-3 py-2 rounded-2xl bg-neutral-800 hover:bg-neutral-700 border border-neutral-700">{t.restOverrideC}</button>
-              </div>
-            </div>
-          </div>
-          <div className="p-4 text-center text-neutral-400 text-sm">
-            {lang==='vi' ? 'Gợi ý: viết 3 điều biết ơn hôm nay.' : 'Tip: jot down 3 things you’re grateful for today.'}
-          </div>
-        </div>
-      );
-    }
-
-    function useSpeech(lang) {
-      const speak = (text) => {
+      const saveLang = (lang) => {
         try {
-          if (!window.speechSynthesis) return;
-          const utterance = new SpeechSynthesisUtterance(text);
-          utterance.lang = lang === 'vi' ? 'vi-VN' : 'en-US';
-          utterance.rate = 1.2;
-          window.speechSynthesis.speak(utterance);
-        } catch (e) {
-          console.error("Speech synthesis failed", e);
-        }
+          localStorage.setItem(LS_LANG, lang);
+        } catch {}
       };
-      return { speak };
-    }
 
-    // Player stays same as v4 (pause/continue, sounds, overflow, reorder)
-    function reducerFactoryWrapper(exs){ return reducerFactory(exs); } // keep factory reference stable
-
-    function Player({ lang, exs, labels, onStartAudio }){
-      const [s, d] = useReducer(reducerFactoryWrapper(exs), { phase:'ready', current:0, remainingMs: ms(exs[0]?.durationSec||0) });
-      const cur = exs[s.current];
-      const nextEx = exs[s.current+1];
-      const total = s.phase==='rest' ? ms(cur?.restSec ?? 20) : ms(cur?.durationSec || 0);
-      const remRatio = total>0 ? Math.max(0, Math.min(1, s.remainingMs/total)) : 1;
-      const dash1 = (2*Math.PI*45*(1-remRatio)), dash2 = (2*Math.PI*45*(remRatio));
-
-      const beeps = useBeeps();
-      const { speak } = useSpeech(lang);
-      const prevPhase = useRef(s.phase);
-      const prevRemainingSec = useRef(0);
-
-      useEffect(() => {
-        const remainingSec = Math.floor(s.remainingMs / 1000);
-        if (s.phase === 'work' && remainingSec !== prevRemainingSec.current) {
-          if (remainingSec === 3 || remainingSec === 2 || remainingSec === 1) {
-            speak(String(remainingSec));
-          }
-        }
-        prevRemainingSec.current = remainingSec;
-      }, [s.remainingMs, s.phase]);
-
-      useEffect(()=>{
-        let raf=0;
-        const loop = nowTs => {
-          if(s.phase==='work'||s.phase==='rest'){ d({type:'TICK', now: nowTs}); }
-          raf = requestAnimationFrame(loop);
-        };
-        raf = requestAnimationFrame(loop);
-        return () => cancelAnimationFrame(raf);
-      }, [s.phase, s.remainingMs, exs]);
-
-      useEffect(()=>{
-        if (prevPhase.current==='work' && s.phase==='rest') beeps.endOfWork();
-        if (prevPhase.current!=='finished' && s.phase==='finished') beeps.workoutFinished();
-        prevPhase.current = s.phase;
-      }, [s.phase]);
-
-      const t = labels;
-      const isYT = (u) => !!u && /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\//i.test(u);
+      // ---------- Utils ----------
+      const clamp = (n, min, max) => Math.min(Math.max(n, min), max);
+      const ms = (s) => Math.max(0, Math.round(s * 1000));
+      const fmt = (msLeft) => {
+        const t = Math.max(0, Math.floor(msLeft / 1000));
+        const m = Math.floor(t / 60),
+          s = t % 60;
+        return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+      };
+      const isYT = (u) =>
+        !!u && /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\//i.test(u);
       const isFileVideo = (u) => !!u && /\.(mp4|webm|ogg)(\?.*)?$/i.test(u);
       const urlStatus = (u) => {
         if (!u) return 'missing';
@@ -472,258 +241,1443 @@
             return v ? `https://www.youtube.com/embed/${v}` : u;
           }
           if (x.hostname === 'youtu.be') {
-            const id = x.pathname.replace('/','');
+            const id = x.pathname.replace('/', '');
             return `https://www.youtube.com/embed/${id}`;
           }
           return u;
-        } catch { return u; }
-      };
-
-      const statBadge = (u) => {
-        const st = urlStatus(u), map = t.videoBadges;
-        const cls = st==='yt' ? 'bg-red-500/20 text-red-300 border-red-400/30'
-                : st==='mp4' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/30'
-                : st==='missing' ? 'bg-rose-600/30 text-rose-200 border-rose-400/30'
-                : 'bg-amber-500/20 text-amber-200 border-amber-400/30';
-        const label = map[st] || map.unknown;
-        return <span className={'text-[10px] px-2 py-[2px] rounded border ' + cls}>{label}</span>;
-      };
-
-      const isRestPhase = s.phase === 'rest';
-      const videoEx = isRestPhase && nextEx ? nextEx : cur;
-      const isAutoplay = isRestPhase && !!nextEx;
-
-      const getYTUrl = (url) => {
-        let finalUrl = toYT(url);
-        if (isAutoplay) {
-            finalUrl += (finalUrl.includes('?') ? '&' : '?') + 'autoplay=1&mute=1';
+        } catch {
+          return u;
         }
-        return finalUrl;
+      };
+      function localizeTitle(title, lang) {
+        if (lang === 'vi') return title;
+        return title
+          .replace('Khởi động động (toàn thân)', 'Dynamic Warm-up (full body)')
+          .replace('Đẩy + Hinge', 'Push + Hinge')
+          .replace('Kéo + Vai + Hông', 'Pull + Shoulders + Hips')
+          .replace('Toàn thân + Mobility', 'Full Body + Mobility')
+          .replace('Nghỉ', 'REST')
+          .replace('— Trái', '— Left')
+          .replace('— Phải', '— Right')
+          .replace('Mobility kết thúc', 'Cooldown Mobility')
+          .replace('Cossack Squat (giãn)', 'Cossack Squat (mobility)')
+          .replace('Hông', 'Hips');
+      }
+
+      // ---------- Workouts (refreshed YouTube links) ----------
+      const LINKS = {
+        // Reputable tutorials checked 2025-08-20
+        warmup: 'https://www.youtube.com/watch?v=3qyWpJ34dWw', // 5-min dynamic warm-up (Well+Good style)
+        goblet: 'https://www.youtube.com/watch?v=MeIiIdhvXT4',
+        floorPress: 'https://www.youtube.com/watch?v=uUGDRwge4F8',
+        rdl: 'https://www.youtube.com/watch?v=FQKfr1YDhEk',
+        dbRow: 'https://www.youtube.com/watch?v=roCP6wCXPqo',
+        plank: 'https://www.youtube.com/watch?v=pSHjTRCQxIw',
+        deadbug: 'https://www.youtube.com/watch?v=bxn9FBrt4-A',
+        cooldown: 'https://www.youtube.com/watch?v=lxuTCHJSers',
+        reverseLunge: 'https://www.youtube.com/watch?v=C_P3Q-PssvY',
+        halfKneelPress: 'https://www.youtube.com/watch?v=2WoOrh3dqss',
+        gluteBridge: 'https://www.youtube.com/watch?v=wPM8icPu6H8',
+        sidePlank: 'https://www.youtube.com/watch?v=K2VljzCC16g',
+        thruster: 'https://www.youtube.com/watch?v=M5gEwLTtWbg',
+        hingeRow: 'https://www.youtube.com/watch?v=o66ZYpIFr4g',
+        lateralLunge: 'https://www.youtube.com/watch?v=MvpBUsQrt_4',
+        pikeWalkout: 'https://www.youtube.com/watch?v=G-2oFuWRgNI',
+        cossack: 'https://www.youtube.com/watch?v=JaCbmoDqUc4',
+        hip90: 'https://www.youtube.com/watch?v=t4Zz6-aG8Iw',
+        hamstring: 'https://www.youtube.com/watch?v=LVY692zJK0A',
+        pecStretch: 'https://www.youtube.com/watch?v=M850sCj9LHQ',
       };
 
-      return (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <aside className="md:col-span-1">
-            <div className="rounded-2xl border border-neutral-800 bg-neutral-900/50 p-3">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="font-semibold"></h2>
-                <span className="text-xs text-neutral-400">{s.current+1}/{exs.length}</span>
-              </div>
-              <ol className="space-y-2 max-h-[65vh] overflow-y-auto pr-1">
-  {exs.map((ex, i) => {
-    const active = i === s.current && ['work','rest','paused'].includes(s.phase);
-    const done = i < s.current || s.phase === 'finished';
-    const cardCls = active
-      ? 'border-sky-500 bg-sky-950/30'
-      : (done ? 'border-emerald-500/30 bg-emerald-900/20' : 'border-neutral-800 bg-neutral-900/40');
-    return (
-      <li key={ex.id}
-          className={`group relative overflow-hidden rounded-xl p-2 border ${cardCls}`}>
-        {done && (
-          <div className="absolute inset-0 pointer-events-none bg-gradient-to-r from-emerald-500/0 via-emerald-500/5 to-emerald-500/10"></div>
-        )}
-        <div className="flex items-center gap-2 relative">
-          <span className={'w-2.5 h-2.5 rounded-full ' + (done? 'bg-emerald-400' : active? 'bg-sky-400':'bg-neutral-600')}></span>
-          <div className="flex-1 min-w-0">
-            <div className="text-sm font-medium flex items-center gap-2">
-              <span className="truncate">{localizeTitle(ex.title, lang)}</span>
-              {done && <span className="shrink-0 whitespace-nowrap text-[10px] px-1.5 py-[1px] rounded-full bg-emerald-600/20 text-emerald-200 border border-emerald-400/30">{t.done}</span>}
-            </div>
-            <div className="text-[11px] text-neutral-400">{t.durationRest(ex.durationSec, ex.restSec ?? 20)}</div>
-            <div className="mt-1 flex items-center gap-2">
-              {statBadge(ex.videoUrl)}
-              {ex.videoUrl && <a className="text-[11px] underline text-sky-300" href={ex.videoUrl} target="_blank" rel="noopener">{t.open}</a>}
-            </div>
-          </div>
-          <div className="flex flex-col gap-1">
-            <button onClick={()=>d({ type:'JUMP', index: i })} className="text-[11px] px-2 py-1 rounded-lg border border-neutral-700">{t.jump}</button>
-            <div className="flex gap-1">
-              <button onClick={()=>window.dispatchEvent(new CustomEvent('EX_REORDER',{detail:{dir:-1,index:i}}))}
-                      className="text-[11px] px-2 py-1 rounded-lg border border-neutral-700">{t.moveUp}</button>
-              <button onClick={()=>window.dispatchEvent(new CustomEvent('EX_REORDER',{detail:{dir:1,index:i}}))}
-                      className="text-[11px] px-2 py-1 rounded-lg border border-neutral-700">{t.moveDown}</button>
-            </div>
-          </div>
-        </div>
-      </li>
-    );
-  })}
-</ol>
-            </div>
-          </aside>
+      const WORKOUTS_BASE = [
+        {
+          key: 'A',
+          name: 'Buổi A — Đẩy + Hinge (30’)',
+          exercises: [
+            {
+              id: 'wu',
+              title: 'Khởi động động (toàn thân)',
+              durationSec: 240,
+              restSec: 20,
+              videoUrl: LINKS.warmup,
+            },
+            {
+              id: 'gs1',
+              title: 'Goblet Squat',
+              durationSec: 50,
+              restSec: 20,
+              videoUrl: LINKS.goblet,
+            },
+            {
+              id: 'fp1',
+              title: 'DB Floor Press',
+              durationSec: 50,
+              restSec: 25,
+              videoUrl: LINKS.floorPress,
+            },
+            {
+              id: 'rdl1',
+              title: 'DB Romanian Deadlift',
+              durationSec: 50,
+              restSec: 20,
+              videoUrl: LINKS.rdl,
+            },
+            {
+              id: 'rowL1',
+              title: '1-Arm DB Row — Trái',
+              durationSec: 45,
+              restSec: 10,
+              videoUrl: LINKS.dbRow,
+            },
+            {
+              id: 'rowR1',
+              title: '1-Arm DB Row — Phải',
+              durationSec: 45,
+              restSec: 25,
+              videoUrl: LINKS.dbRow,
+            },
+            {
+              id: 'gs2',
+              title: 'Goblet Squat',
+              durationSec: 50,
+              restSec: 20,
+              videoUrl: LINKS.goblet,
+            },
+            {
+              id: 'fp2',
+              title: 'DB Floor Press',
+              durationSec: 50,
+              restSec: 25,
+              videoUrl: LINKS.floorPress,
+            },
+            {
+              id: 'rdl2',
+              title: 'DB Romanian Deadlift',
+              durationSec: 50,
+              restSec: 20,
+              videoUrl: LINKS.rdl,
+            },
+            {
+              id: 'rowL2',
+              title: '1-Arm DB Row — Trái',
+              durationSec: 45,
+              restSec: 10,
+              videoUrl: LINKS.dbRow,
+            },
+            {
+              id: 'rowR2',
+              title: '1-Arm DB Row — Phải',
+              durationSec: 45,
+              restSec: 25,
+              videoUrl: LINKS.dbRow,
+            },
+            {
+              id: 'gs3',
+              title: 'Goblet Squat',
+              durationSec: 50,
+              restSec: 20,
+              videoUrl: LINKS.goblet,
+            },
+            {
+              id: 'fp3',
+              title: 'DB Floor Press',
+              durationSec: 50,
+              restSec: 25,
+              videoUrl: LINKS.floorPress,
+            },
+            {
+              id: 'rdl3',
+              title: 'DB Romanian Deadlift',
+              durationSec: 50,
+              restSec: 20,
+              videoUrl: LINKS.rdl,
+            },
+            {
+              id: 'rowL3',
+              title: '1-Arm DB Row — Trái',
+              durationSec: 45,
+              restSec: 10,
+              videoUrl: LINKS.dbRow,
+            },
+            {
+              id: 'rowR3',
+              title: '1-Arm DB Row — Phải',
+              durationSec: 45,
+              restSec: 25,
+              videoUrl: LINKS.dbRow,
+            },
+            {
+              id: 'plk',
+              title: 'Front Plank',
+              durationSec: 60,
+              restSec: 20,
+              videoUrl: LINKS.plank,
+            },
+            {
+              id: 'dbug',
+              title: 'Dead Bug',
+              durationSec: 60,
+              restSec: 20,
+              videoUrl: LINKS.deadbug,
+            },
+            {
+              id: 'mob',
+              title: 'Mobility kết thúc',
+              durationSec: 210,
+              restSec: 0,
+              videoUrl: LINKS.cooldown,
+            },
+          ],
+        },
+        {
+          key: 'B',
+          name: 'Buổi B — Kéo + Vai + Hông (30’)',
+          exercises: [
+            {
+              id: 'wu',
+              title: 'Khởi động động (toàn thân)',
+              durationSec: 240,
+              restSec: 20,
+              videoUrl: LINKS.warmup,
+            },
+            {
+              id: 'lnL1',
+              title: 'Reverse Lunge — Trái',
+              durationSec: 45,
+              restSec: 10,
+              videoUrl: LINKS.reverseLunge,
+            },
+            {
+              id: 'lnR1',
+              title: 'Reverse Lunge — Phải',
+              durationSec: 45,
+              restSec: 20,
+              videoUrl: LINKS.reverseLunge,
+            },
+            {
+              id: 'rowL1',
+              title: '1-Arm DB Row — Trái',
+              durationSec: 45,
+              restSec: 10,
+              videoUrl: LINKS.dbRow,
+            },
+            {
+              id: 'rowR1',
+              title: '1-Arm DB Row — Phải',
+              durationSec: 45,
+              restSec: 25,
+              videoUrl: LINKS.dbRow,
+            },
+            {
+              id: 'prsL1',
+              title: 'Half-kneeling DB Press — Trái',
+              durationSec: 45,
+              restSec: 10,
+              videoUrl: LINKS.halfKneelPress,
+            },
+            {
+              id: 'prsR1',
+              title: 'Half-kneeling DB Press — Phải',
+              durationSec: 45,
+              restSec: 25,
+              videoUrl: LINKS.halfKneelPress,
+            },
+            {
+              id: 'bridge1',
+              title: 'Glute Bridge',
+              durationSec: 60,
+              restSec: 20,
+              videoUrl: LINKS.gluteBridge,
+            },
+            {
+              id: 'lnL2',
+              title: 'Reverse Lunge — Trái',
+              durationSec: 45,
+              restSec: 10,
+              videoUrl: LINKS.reverseLunge,
+            },
+            {
+              id: 'lnR2',
+              title: 'Reverse Lunge — Phải',
+              durationSec: 45,
+              restSec: 20,
+              videoUrl: LINKS.reverseLunge,
+            },
+            {
+              id: 'rowL2',
+              title: '1-Arm DB Row — Trái',
+              durationSec: 45,
+              restSec: 10,
+              videoUrl: LINKS.dbRow,
+            },
+            {
+              id: 'rowR2',
+              title: '1-Arm DB Row — Phải',
+              durationSec: 45,
+              restSec: 25,
+              videoUrl: LINKS.dbRow,
+            },
+            {
+              id: 'prsL2',
+              title: 'Half-kneeling DB Press — Trái',
+              durationSec: 45,
+              restSec: 10,
+              videoUrl: LINKS.halfKneelPress,
+            },
+            {
+              id: 'prsR2',
+              title: 'Half-kneeling DB Press — Phải',
+              durationSec: 45,
+              restSec: 25,
+              videoUrl: LINKS.halfKneelPress,
+            },
+            {
+              id: 'bridge2',
+              title: 'Glute Bridge',
+              durationSec: 60,
+              restSec: 20,
+              videoUrl: LINKS.gluteBridge,
+            },
+            {
+              id: 'lnL3',
+              title: 'Reverse Lunge — Trái',
+              durationSec: 45,
+              restSec: 10,
+              videoUrl: LINKS.reverseLunge,
+            },
+            {
+              id: 'lnR3',
+              title: 'Reverse Lunge — Phải',
+              durationSec: 45,
+              restSec: 20,
+              videoUrl: LINKS.reverseLunge,
+            },
+            {
+              id: 'rowL3',
+              title: '1-Arm DB Row — Trái',
+              durationSec: 45,
+              restSec: 10,
+              videoUrl: LINKS.dbRow,
+            },
+            {
+              id: 'rowR3',
+              title: '1-Arm DB Row — Phải',
+              durationSec: 45,
+              restSec: 25,
+              videoUrl: LINKS.dbRow,
+            },
+            {
+              id: 'prsL3',
+              title: 'Half-kneeling DB Press — Trái',
+              durationSec: 45,
+              restSec: 10,
+              videoUrl: LINKS.halfKneelPress,
+            },
+            {
+              id: 'prsR3',
+              title: 'Half-kneeling DB Press — Phải',
+              durationSec: 45,
+              restSec: 25,
+              videoUrl: LINKS.halfKneelPress,
+            },
+            {
+              id: 'bridge3',
+              title: 'Glute Bridge',
+              durationSec: 60,
+              restSec: 20,
+              videoUrl: LINKS.gluteBridge,
+            },
+            {
+              id: 'dbug',
+              title: 'Dead Bug',
+              durationSec: 60,
+              restSec: 20,
+              videoUrl: LINKS.deadbug,
+            },
+            {
+              id: 'splL',
+              title: 'Side Plank — Trái',
+              durationSec: 40,
+              restSec: 10,
+              videoUrl: LINKS.sidePlank,
+            },
+            {
+              id: 'splR',
+              title: 'Side Plank — Phải',
+              durationSec: 40,
+              restSec: 20,
+              videoUrl: LINKS.sidePlank,
+            },
+            {
+              id: 'mob',
+              title: 'Mobility kết thúc',
+              durationSec: 180,
+              restSec: 0,
+              videoUrl: LINKS.cooldown,
+            },
+          ],
+        },
+        {
+          key: 'C',
+          name: 'Buổi C — Toàn thân + Mobility (30’)',
+          exercises: [
+            {
+              id: 'wu',
+              title: 'Khởi động động (toàn thân)',
+              durationSec: 240,
+              restSec: 20,
+              videoUrl: LINKS.warmup,
+            },
+            {
+              id: 'thr1',
+              title: 'DB Thruster',
+              durationSec: 45,
+              restSec: 25,
+              videoUrl: LINKS.thruster,
+            },
+            {
+              id: 'hrow1',
+              title: 'Hinge to Row (DB)',
+              durationSec: 50,
+              restSec: 20,
+              videoUrl: LINKS.hingeRow,
+            },
+            {
+              id: 'latL1',
+              title: 'Lateral Lunge — Trái',
+              durationSec: 45,
+              restSec: 10,
+              videoUrl: LINKS.lateralLunge,
+            },
+            {
+              id: 'latR1',
+              title: 'Lateral Lunge — Phải',
+              durationSec: 45,
+              restSec: 25,
+              videoUrl: LINKS.lateralLunge,
+            },
+            {
+              id: 'walk1',
+              title: 'Pike Walkout → Plank',
+              durationSec: 45,
+              restSec: 30,
+              videoUrl: LINKS.pikeWalkout,
+            },
+            {
+              id: 'thr2',
+              title: 'DB Thruster',
+              durationSec: 45,
+              restSec: 25,
+              videoUrl: LINKS.thruster,
+            },
+            {
+              id: 'hrow2',
+              title: 'Hinge to Row (DB)',
+              durationSec: 50,
+              restSec: 20,
+              videoUrl: LINKS.hingeRow,
+            },
+            {
+              id: 'latL2',
+              title: 'Lateral Lunge — Trái',
+              durationSec: 45,
+              restSec: 10,
+              videoUrl: LINKS.lateralLunge,
+            },
+            {
+              id: 'latR2',
+              title: 'Lateral Lunge — Phải',
+              durationSec: 45,
+              restSec: 25,
+              videoUrl: LINKS.lateralLunge,
+            },
+            {
+              id: 'walk2',
+              title: 'Pike Walkout → Plank',
+              durationSec: 45,
+              restSec: 30,
+              videoUrl: LINKS.pikeWalkout,
+            },
+            {
+              id: 'thr3',
+              title: 'DB Thruster',
+              durationSec: 45,
+              restSec: 25,
+              videoUrl: LINKS.thruster,
+            },
+            {
+              id: 'hrow3',
+              title: 'Hinge to Row (DB)',
+              durationSec: 50,
+              restSec: 20,
+              videoUrl: LINKS.hingeRow,
+            },
+            {
+              id: 'latL3',
+              title: 'Lateral Lunge — Trái',
+              durationSec: 45,
+              restSec: 10,
+              videoUrl: LINKS.lateralLunge,
+            },
+            {
+              id: 'latR3',
+              title: 'Lateral Lunge — Phải',
+              durationSec: 45,
+              restSec: 25,
+              videoUrl: LINKS.lateralLunge,
+            },
+            {
+              id: 'walk3',
+              title: 'Pike Walkout → Plank',
+              durationSec: 45,
+              restSec: 30,
+              videoUrl: LINKS.pikeWalkout,
+            },
+            {
+              id: 'cos',
+              title: 'Cossack Squat (giãn)',
+              durationSec: 60,
+              restSec: 20,
+              videoUrl: LINKS.cossack,
+            },
+            {
+              id: 'hipL',
+              title: '90/90 Hips — Trái',
+              durationSec: 45,
+              restSec: 10,
+              videoUrl: LINKS.hip90,
+            },
+            {
+              id: 'hipR',
+              title: '90/90 Hips — Phải',
+              durationSec: 45,
+              restSec: 20,
+              videoUrl: LINKS.hip90,
+            },
+            {
+              id: 'ham',
+              title: 'Hamstring Stretch',
+              durationSec: 60,
+              restSec: 15,
+              videoUrl: LINKS.hamstring,
+            },
+            {
+              id: 'pec',
+              title: 'Pec Stretch (cửa/tường)',
+              durationSec: 60,
+              restSec: 0,
+              videoUrl: LINKS.pecStretch,
+            },
+          ],
+        },
+      ];
 
-          <main className="md:col-span-2">
-            <div className="rounded-3xl border border-neutral-800 bg-neutral-900/60 overflow-hidden">
-              <div className="aspect-video bg-black flex items-center justify-center">
-                {s.phase !== 'finished' && videoEx ? (
-                  isYT(videoEx.videoUrl) ? (
-                    <iframe key={videoEx.id} className="w-full h-full" src={getYTUrl(videoEx.videoUrl)} title={localizeTitle(videoEx.title, lang)}
-                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                            allowfullscreen sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-presentation"></iframe>
-                  ) : videoEx.videoUrl ? (
-                    <video key={videoEx.id} className="w-full h-full" src={videoEx.videoUrl} controls={!isAutoplay} autoPlay={isAutoplay} muted={isAutoplay} preload="metadata"
-                           onError={() => alert(t.invalidVideo)}></video>
+      // ---------- Auto schedule ----------
+      // 0=Sun..6=Sat -> Sunday REST as requested.
+      const DAY_PLAN = {
+        0: 'REST',
+        1: 'A',
+        2: 'B',
+        3: 'C',
+        4: 'A',
+        5: 'B',
+        6: 'C',
+      };
+
+      function reducerFactory(exs) {
+        return function r(s, a) {
+          const cur = exs[s.current];
+          switch (a.type) {
+            case 'LOAD':
+              return {
+                phase: 'ready',
+                current: 0,
+                remainingMs: ms(exs[0]?.durationSec || 0),
+              };
+            case 'START':
+              return {
+                phase: 'work',
+                current: 0,
+                remainingMs: ms(cur?.durationSec || 0),
+                startedAt: performance.now(),
+                last: 'work',
+              };
+            case 'PAUSE':
+              if (s.phase === 'work' || s.phase === 'rest')
+                return { ...s, phase: 'paused', startedAt: undefined };
+              return s;
+            case 'RESUME':
+              if (s.phase === 'paused')
+                return {
+                  ...s,
+                  phase: s.last || 'work',
+                  startedAt: performance.now(),
+                };
+              return s;
+            case 'TICK': {
+              if (!(s.phase === 'work' || s.phase === 'rest')) return s;
+              const el = a.now - (s.startedAt ?? a.now);
+              const rem = Math.max(0, s.remainingMs - el);
+              if (rem > 0)
+                return {
+                  ...s,
+                  remainingMs: rem,
+                  startedAt: a.now,
+                  last: s.phase,
+                };
+              if (s.phase === 'work') {
+                const rrest = ms(cur?.restSec ?? 20);
+                if (rrest > 0)
+                  return {
+                    phase: 'rest',
+                    current: s.current,
+                    remainingMs: rrest,
+                    startedAt: a.now,
+                    last: 'rest',
+                  };
+                const nx = s.current + 1;
+                if (nx >= exs.length)
+                  return {
+                    phase: 'finished',
+                    current: s.current,
+                    remainingMs: 0,
+                  };
+                return {
+                  phase: 'work',
+                  current: nx,
+                  remainingMs: ms(exs[nx].durationSec),
+                  startedAt: a.now,
+                  last: 'work',
+                };
+              } else {
+                const nx = s.current + 1;
+                if (nx >= exs.length)
+                  return {
+                    phase: 'finished',
+                    current: s.current,
+                    remainingMs: 0,
+                  };
+                return {
+                  phase: 'work',
+                  current: nx,
+                  remainingMs: ms(exs[nx].durationSec),
+                  startedAt: a.now,
+                  last: 'work',
+                };
+              }
+            }
+            case 'NEXT': {
+              const nx = Math.min(s.current + 1, exs.length);
+              if (nx >= exs.length)
+                return {
+                  phase: 'finished',
+                  current: s.current,
+                  remainingMs: 0,
+                };
+              return {
+                phase: 'work',
+                current: nx,
+                remainingMs: ms(exs[nx].durationSec),
+                startedAt: performance.now(),
+                last: 'work',
+              };
+            }
+            case 'PREV': {
+              const pv = Math.max(s.current - 1, 0);
+              return {
+                phase: 'work',
+                current: pv,
+                remainingMs: ms(exs[pv].durationSec),
+                startedAt: performance.now(),
+                last: 'work',
+              };
+            }
+            case 'RESET':
+              return {
+                phase: 'ready',
+                current: 0,
+                remainingMs: ms(exs[0]?.durationSec || 0),
+              };
+            case 'JUMP': {
+              const i = Math.max(0, Math.min(a.index, exs.length - 1));
+              return {
+                phase: 'work',
+                current: i,
+                remainingMs: ms(exs[i].durationSec),
+                startedAt: performance.now(),
+                last: 'work',
+              };
+            }
+            default:
+              return s;
+          }
+        };
+      }
+
+      function useBeeps() {
+        const ctxRef = useRef(null);
+        const ensure = () => {
+          if (!ctxRef.current) {
+            const AC = window.AudioContext || window.webkitAudioContext;
+            if (AC) ctxRef.current = new AC();
+          }
+          return ctxRef.current;
+        };
+        const tone = (f = 880, dur = 0.15) => {
+          const ctx = ensure();
+          if (!ctx) return;
+          const now = ctx.currentTime;
+          const o = ctx.createOscillator();
+          const g = ctx.createGain();
+          o.type = 'sine';
+          o.frequency.value = f;
+          o.connect(g);
+          g.connect(ctx.destination);
+          g.gain.setValueAtTime(0.0001, now);
+          g.gain.exponentialRampToValueAtTime(0.25, now + 0.01);
+          g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+          o.start(now);
+          o.stop(now + dur);
+        };
+        const endOfWork = () => {
+          tone(880, 0.12);
+          setTimeout(() => tone(660, 0.12), 150);
+          setTimeout(() => tone(520, 0.18), 320);
+        };
+        const workoutFinished = () => {
+          tone(660, 0.2);
+          setTimeout(() => tone(880, 0.25), 230);
+          setTimeout(() => tone(990, 0.3), 500);
+        };
+        return { ensure, endOfWork, workoutFinished };
+      }
+
+      function RestScreen({ lang, todayName, dateStr, onOverride }) {
+        const t = L[lang].labels;
+        const [phase, setPhase] = useState(
+          lang === 'vi' ? 'Hít vào' : 'Inhale'
+        );
+        const [sec, setSec] = useState(4);
+        useEffect(() => {
+          let i = 0;
+          const steps =
+            lang === 'vi'
+              ? [
+                  ['Hít vào', 4],
+                  ['Nín thở', 4],
+                  ['Thở ra', 4],
+                  ['Nín thở', 4],
+                ]
+              : [
+                  ['Inhale', 4],
+                  ['Hold', 4],
+                  ['Exhale', 4],
+                  ['Hold', 4],
+                ];
+          const tick = () => {
+            const [p, s] = steps[i % steps.length];
+            setPhase(p);
+            setSec(s);
+          };
+          tick();
+          const timer = setInterval(() => {
+            setSec((x) => {
+              if (x > 1) return x - 1;
+              i++;
+              tick();
+              return sec;
+            });
+          }, 1000);
+          return () => clearInterval(timer);
+        }, [lang]);
+        return (
+          <div className='rounded-3xl border border-neutral-800 bg-neutral-900/60 overflow-hidden'>
+            <div className='aspect-video bg-black grid place-items-center p-6'>
+              <div className='text-center max-w-xl'>
+                <div
+                  className='mx-auto w-40 h-40 rounded-full bg-emerald-500/20 grid place-items-center'
+                  style={{ animation: 'breathe 8s ease-in-out infinite' }}
+                >
+                  <div className='text-2xl font-bold'>{phase}</div>
+                  <div className='text-sm tabular-nums'>{sec}s</div>
+                </div>
+                <h2 className='text-xl font-semibold mt-4'>
+                  {t.restScreenTitle}
+                </h2>
+                <p className='text-neutral-400 text-sm'>
+                  {t.restScreenTip(todayName, dateStr)}
+                </p>
+                <div className='mt-4 flex items-center justify-center gap-2 flex-wrap'>
+                  <button
+                    onClick={() => onOverride('A')}
+                    className='px-3 py-2 rounded-2xl bg-neutral-800 hover:bg-neutral-700 border border-neutral-700'
+                  >
+                    {t.restOverrideA}
+                  </button>
+                  <button
+                    onClick={() => onOverride('B')}
+                    className='px-3 py-2 rounded-2xl bg-neutral-800 hover:bg-neutral-700 border border-neutral-700'
+                  >
+                    {t.restOverrideB}
+                  </button>
+                  <button
+                    onClick={() => onOverride('C')}
+                    className='px-3 py-2 rounded-2xl bg-neutral-800 hover:bg-neutral-700 border border-neutral-700'
+                  >
+                    {t.restOverrideC}
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div className='p-4 text-center text-neutral-400 text-sm'>
+              {lang === 'vi'
+                ? 'Gợi ý: viết 3 điều biết ơn hôm nay.'
+                : 'Tip: jot down 3 things you’re grateful for today.'}
+            </div>
+          </div>
+        );
+      }
+
+      function useSpeech(lang) {
+        const speak = (text) => {
+          try {
+            if (!window.speechSynthesis) return;
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = lang === 'vi' ? 'vi-VN' : 'en-US';
+            utterance.rate = 1.2;
+            window.speechSynthesis.speak(utterance);
+          } catch (e) {
+            console.error('Speech synthesis failed', e);
+          }
+        };
+        return { speak };
+      }
+
+      // Player stays same as v4 (pause/continue, sounds, overflow, reorder)
+      function reducerFactoryWrapper(exs) {
+        return reducerFactory(exs);
+      } // keep factory reference stable
+
+      function Player({ lang, exs, labels, onStartAudio }) {
+        const [s, d] = useReducer(reducerFactoryWrapper(exs), {
+          phase: 'ready',
+          current: 0,
+          remainingMs: ms(exs[0]?.durationSec || 0),
+        });
+        const [workoutStartTime, setWorkoutStartTime] = useState(null);
+        const [totalElapsedMs, setTotalElapsedMs] = useState(0);
+        const [finalTotalTime, setFinalTotalTime] = useState(null);
+        const cur = exs[s.current];
+        const nextEx = exs[s.current + 1];
+        const total =
+          s.phase === 'rest'
+            ? ms(cur?.restSec ?? 20)
+            : ms(cur?.durationSec || 0);
+        const remRatio =
+          total > 0 ? Math.max(0, Math.min(1, s.remainingMs / total)) : 1;
+        const dash1 = 2 * Math.PI * 45 * (1 - remRatio),
+          dash2 = 2 * Math.PI * 45 * remRatio;
+
+        const beeps = useBeeps();
+        const { speak } = useSpeech(lang);
+        const prevPhase = useRef(s.phase);
+        const prevRemainingSec = useRef(0);
+
+        useEffect(() => {
+          const remainingSec = Math.floor(s.remainingMs / 1000);
+          if (s.phase === 'work' && remainingSec !== prevRemainingSec.current) {
+            if (
+              remainingSec === 3 ||
+              remainingSec === 2 ||
+              remainingSec === 1
+            ) {
+              speak(String(remainingSec));
+            }
+          }
+          prevRemainingSec.current = remainingSec;
+        }, [s.remainingMs, s.phase]);
+
+        useEffect(() => {
+          let raf = 0;
+          const loop = (nowTs) => {
+            if (s.phase === 'work' || s.phase === 'rest') {
+              d({ type: 'TICK', now: nowTs });
+            }
+            raf = requestAnimationFrame(loop);
+          };
+          raf = requestAnimationFrame(loop);
+          return () => cancelAnimationFrame(raf);
+        }, [s.phase, s.remainingMs, exs]);
+
+        useEffect(() => {
+          if (prevPhase.current === 'work' && s.phase === 'rest')
+            beeps.endOfWork();
+          if (prevPhase.current !== 'finished' && s.phase === 'finished') {
+            beeps.workoutFinished();
+            // Capture final total time when workout finishes
+            if (workoutStartTime) {
+              const finalTime = performance.now() - workoutStartTime;
+              setFinalTotalTime(finalTime);
+            }
+          }
+          // Reset total time tracking when workout is reset
+          if (s.phase === 'ready' && prevPhase.current !== 'ready') {
+            setWorkoutStartTime(null);
+            setTotalElapsedMs(0);
+            setFinalTotalTime(null);
+          }
+          // Start total time tracking when workout begins
+          if (prevPhase.current === 'ready' && s.phase === 'work') {
+            setWorkoutStartTime(performance.now());
+          }
+          prevPhase.current = s.phase;
+        }, [s.phase, workoutStartTime]);
+
+        // Update total elapsed time continuously during workout
+        useEffect(() => {
+          if (
+            !workoutStartTime ||
+            s.phase === 'ready' ||
+            s.phase === 'finished'
+          )
+            return;
+
+          const updateTotalTime = () => {
+            const elapsed = performance.now() - workoutStartTime;
+            setTotalElapsedMs(elapsed);
+          };
+
+          const interval = setInterval(updateTotalTime, 100); // Update every 100ms for smooth display
+          return () => clearInterval(interval);
+        }, [workoutStartTime, s.phase]);
+
+        const t = labels;
+        const isYT = (u) =>
+          !!u && /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\//i.test(u);
+        const isFileVideo = (u) => !!u && /\.(mp4|webm|ogg)(\?.*)?$/i.test(u);
+        const urlStatus = (u) => {
+          if (!u) return 'missing';
+          if (isYT(u)) return 'yt';
+          if (isFileVideo(u)) return 'mp4';
+          return 'unknown';
+        };
+        const toYT = (u) => {
+          try {
+            const x = new URL(u);
+            if (x.hostname.includes('youtube.com') && x.pathname === '/watch') {
+              const v = x.searchParams.get('v');
+              return v ? `https://www.youtube.com/embed/${v}` : u;
+            }
+            if (x.hostname === 'youtu.be') {
+              const id = x.pathname.replace('/', '');
+              return `https://www.youtube.com/embed/${id}`;
+            }
+            return u;
+          } catch {
+            return u;
+          }
+        };
+
+        const statBadge = (u) => {
+          const st = urlStatus(u),
+            map = t.videoBadges;
+          const cls =
+            st === 'yt'
+              ? 'bg-red-500/20 text-red-300 border-red-400/30'
+              : st === 'mp4'
+              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/30'
+              : st === 'missing'
+              ? 'bg-rose-600/30 text-rose-200 border-rose-400/30'
+              : 'bg-amber-500/20 text-amber-200 border-amber-400/30';
+          const label = map[st] || map.unknown;
+          return (
+            <span className={'text-[10px] px-2 py-[2px] rounded border ' + cls}>
+              {label}
+            </span>
+          );
+        };
+
+        const isRestPhase = s.phase === 'rest';
+        const videoEx = isRestPhase && nextEx ? nextEx : cur;
+        const isAutoplay = isRestPhase && !!nextEx;
+
+        const getYTUrl = (url) => {
+          let finalUrl = toYT(url);
+          if (isAutoplay) {
+            finalUrl +=
+              (finalUrl.includes('?') ? '&' : '?') + 'autoplay=1&mute=1';
+          }
+          return finalUrl;
+        };
+
+        return (
+          <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
+            <aside className='md:col-span-1'>
+              <div className='rounded-2xl border border-neutral-800 bg-neutral-900/50 p-3'>
+                <div className='flex items-center justify-between mb-3'>
+                  <h2 className='font-semibold'></h2>
+                  <span className='text-xs text-neutral-400'>
+                    {s.current + 1}/{exs.length}
+                  </span>
+                </div>
+                <ol className='space-y-2 max-h-[65vh] overflow-y-auto pr-1'>
+                  {exs.map((ex, i) => {
+                    const active =
+                      i === s.current &&
+                      ['work', 'rest', 'paused'].includes(s.phase);
+                    const done = i < s.current || s.phase === 'finished';
+                    const cardCls = active
+                      ? 'border-sky-500 bg-sky-950/30'
+                      : done
+                      ? 'border-emerald-500/30 bg-emerald-900/20'
+                      : 'border-neutral-800 bg-neutral-900/40';
+                    return (
+                      <li
+                        key={ex.id}
+                        className={`group relative overflow-hidden rounded-xl p-2 border ${cardCls}`}
+                      >
+                        {done && (
+                          <div className='absolute inset-0 pointer-events-none bg-gradient-to-r from-emerald-500/0 via-emerald-500/5 to-emerald-500/10'></div>
+                        )}
+                        <div className='flex items-center gap-2 relative'>
+                          <span
+                            className={
+                              'w-2.5 h-2.5 rounded-full ' +
+                              (done
+                                ? 'bg-emerald-400'
+                                : active
+                                ? 'bg-sky-400'
+                                : 'bg-neutral-600')
+                            }
+                          ></span>
+                          <div className='flex-1 min-w-0'>
+                            <div className='text-sm font-medium flex items-center gap-2'>
+                              <span className='truncate'>
+                                {localizeTitle(ex.title, lang)}
+                              </span>
+                              {done && (
+                                <span className='shrink-0 whitespace-nowrap text-[10px] px-1.5 py-[1px] rounded-full bg-emerald-600/20 text-emerald-200 border border-emerald-400/30'>
+                                  {t.done}
+                                </span>
+                              )}
+                            </div>
+                            <div className='text-[11px] text-neutral-400'>
+                              {t.durationRest(ex.durationSec, ex.restSec ?? 20)}
+                            </div>
+                            <div className='mt-1 flex items-center gap-2'>
+                              {statBadge(ex.videoUrl)}
+                              {ex.videoUrl && (
+                                <a
+                                  className='text-[11px] underline text-sky-300'
+                                  href={ex.videoUrl}
+                                  target='_blank'
+                                  rel='noopener'
+                                >
+                                  {t.open}
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                          <div className='flex flex-col gap-1'>
+                            <button
+                              onClick={() => d({ type: 'JUMP', index: i })}
+                              className='text-[11px] px-2 py-1 rounded-lg border border-neutral-700'
+                            >
+                              {t.jump}
+                            </button>
+                            <div className='flex gap-1'>
+                              <button
+                                onClick={() =>
+                                  window.dispatchEvent(
+                                    new CustomEvent('EX_REORDER', {
+                                      detail: { dir: -1, index: i },
+                                    })
+                                  )
+                                }
+                                className='text-[11px] px-2 py-1 rounded-lg border border-neutral-700'
+                              >
+                                {t.moveUp}
+                              </button>
+                              <button
+                                onClick={() =>
+                                  window.dispatchEvent(
+                                    new CustomEvent('EX_REORDER', {
+                                      detail: { dir: 1, index: i },
+                                    })
+                                  )
+                                }
+                                className='text-[11px] px-2 py-1 rounded-lg border border-neutral-700'
+                              >
+                                {t.moveDown}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ol>
+              </div>
+            </aside>
+
+            <main className='md:col-span-2'>
+              <div className='rounded-3xl border border-neutral-800 bg-neutral-900/60 overflow-hidden'>
+                <div className='aspect-video bg-black flex items-center justify-center'>
+                  {s.phase !== 'finished' && videoEx ? (
+                    isYT(videoEx.videoUrl) ? (
+                      <iframe
+                        key={videoEx.id}
+                        className='w-full h-full'
+                        src={getYTUrl(videoEx.videoUrl)}
+                        title={localizeTitle(videoEx.title, lang)}
+                        allow='accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture'
+                        allowfullscreen
+                        sandbox='allow-scripts allow-same-origin allow-popups allow-forms allow-presentation'
+                      ></iframe>
+                    ) : videoEx.videoUrl ? (
+                      <video
+                        key={videoEx.id}
+                        className='w-full h-full'
+                        src={videoEx.videoUrl}
+                        controls={!isAutoplay}
+                        autoPlay={isAutoplay}
+                        muted={isAutoplay}
+                        preload='metadata'
+                        onError={() => alert(t.invalidVideo)}
+                      ></video>
+                    ) : (
+                      <div className='text-neutral-400 text-center px-6'>
+                        <p className='mb-2'>
+                          {lang === 'vi'
+                            ? 'Chưa có video cho bài:'
+                            : 'No video for exercise:'}{' '}
+                          <b>{localizeTitle(videoEx.title, lang)}</b>
+                        </p>
+                        <p className='text-sm'>
+                          {lang === 'vi'
+                            ? 'Thêm URL YouTube/mp4 trong dữ liệu bài tập.'
+                            : 'Add a YouTube/mp4 URL in your workout data.'}
+                        </p>
+                      </div>
+                    )
                   ) : (
-                    <div className="text-neutral-400 text-center px-6">
-                      <p className="mb-2">{lang==='vi'?'Chưa có video cho bài:':'No video for exercise:'} <b>{localizeTitle(videoEx.title, lang)}</b></p>
-                      <p className="text-sm">{lang==='vi'?'Thêm URL YouTube/mp4 trong dữ liệu bài tập.':'Add a YouTube/mp4 URL in your workout data.'}</p>
+                    <div className='text-center text-emerald-400 font-semibold'>
+                      <div className='text-2xl mb-2'>
+                        {lang === 'vi'
+                          ? 'Hoàn thành buổi tập 🎉'
+                          : 'Workout complete 🎉'}
+                      </div>
+                      {finalTotalTime && (
+                        <div className='text-lg text-emerald-300'>
+                          {labels.finalTotalTime(fmt(finalTotalTime))}
+                        </div>
+                      )}
                     </div>
-                  )
-                ) : (
-                  <div className="text-center text-emerald-400 font-semibold">{lang==='vi'?'Hoàn thành buổi tập 🎉':'Workout complete 🎉'}</div>
-                )}
-              </div>
+                  )}
+                </div>
 
-              <div className="p-4 md:p-6">
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <div>
-                    <div className="text-xs uppercase tracking-widest text-neutral-400">{L[lang].labels.status}</div>
-                    <div className="text-lg font-semibold">
-                      {s.phase === 'ready' && L[lang].labels.ready}
-                      {s.phase === 'work' && L[lang].labels.work(localizeTitle(cur?.title ?? '', lang))}
-                      {s.phase === 'rest' && L[lang].labels.rest(localizeTitle((exs[s.current+1]?.title ?? '—'), lang))}
-                      {s.phase === 'paused' && L[lang].labels.paused(localizeTitle(cur?.title ?? '', lang))}
-                      {s.phase === 'finished' && L[lang].labels.finished}
+                <div className='p-4 md:p-6'>
+                  <div className='flex items-center justify-between flex-wrap gap-2'>
+                    <div>
+                      <div className='text-xs uppercase tracking-widest text-neutral-400'>
+                        {L[lang].labels.status}
+                      </div>
+                      <div className='text-lg font-semibold'>
+                        {s.phase === 'ready' && L[lang].labels.ready}
+                        {s.phase === 'work' &&
+                          L[lang].labels.work(
+                            localizeTitle(cur?.title ?? '', lang)
+                          )}
+                        {s.phase === 'rest' &&
+                          L[lang].labels.rest(
+                            localizeTitle(
+                              exs[s.current + 1]?.title ?? '—',
+                              lang
+                            )
+                          )}
+                        {s.phase === 'paused' &&
+                          L[lang].labels.paused(
+                            localizeTitle(cur?.title ?? '', lang)
+                          )}
+                        {s.phase === 'finished' && L[lang].labels.finished}
+                      </div>
+                      {/* Total time display */}
+                      <div className='mt-2'>
+                        <div className='text-xs uppercase tracking-widest text-neutral-400'>
+                          {labels.totalTime}
+                        </div>
+                        <div className='text-sm font-medium text-emerald-400'>
+                          {s.phase === 'finished' && finalTotalTime
+                            ? labels.finalTotalTime(fmt(finalTotalTime))
+                            : workoutStartTime
+                            ? labels.totalTimeElapsed(fmt(totalElapsedMs))
+                            : '00:00'}
+                        </div>
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="relative w-36 h-36">
-                    <svg className="-rotate-90 w-36 h-36" viewBox="0 0 100 100">
-                      <circle cx="50" cy="50" r="45" stroke="rgba(255,255,255,0.1)" strokeWidth="10" fill="none"></circle>
-                      <circle cx="50" cy="50" r="45" stroke="#22d3ee" strokeWidth="10" strokeLinecap="round" fill="none"
-                              strokeDasharray={`${(2*Math.PI*45*(1-Math.max(0, Math.min(1, s.remainingMs/(s.phase==='rest'? ms(cur?.restSec ?? 20): ms(cur?.durationSec || 0))))) )} ${(2*Math.PI*45*(Math.max(0, Math.min(1, s.remainingMs/(s.phase==='rest'? ms(cur?.restSec ?? 20): ms(cur?.durationSec || 0))))) )}`}></circle>
-                    </svg>
-                    <div className="absolute inset-0 grid place-items-center">
-                      <div className="text-center">
-                        <div className="text-2xl font-bold tabular-nums" aria-live="polite">{fmt(s.remainingMs)}</div>
-                        <div className="text-[11px] uppercase tracking-wider text-neutral-400">
-                          {s.phase === 'rest' ? L[lang].labels.restLabel : s.phase === 'work' ? L[lang].labels.workLabel : s.phase === 'paused' ? L[lang].labels.pausedLabel : L[lang].labels.readyLabel}
+                    <div className='relative w-36 h-36'>
+                      <svg
+                        className='-rotate-90 w-36 h-36'
+                        viewBox='0 0 100 100'
+                      >
+                        <circle
+                          cx='50'
+                          cy='50'
+                          r='45'
+                          stroke='rgba(255,255,255,0.1)'
+                          strokeWidth='10'
+                          fill='none'
+                        ></circle>
+                        <circle
+                          cx='50'
+                          cy='50'
+                          r='45'
+                          stroke='#22d3ee'
+                          strokeWidth='10'
+                          strokeLinecap='round'
+                          fill='none'
+                          strokeDasharray={`${
+                            2 *
+                            Math.PI *
+                            45 *
+                            (1 -
+                              Math.max(
+                                0,
+                                Math.min(
+                                  1,
+                                  s.remainingMs /
+                                    (s.phase === 'rest'
+                                      ? ms(cur?.restSec ?? 20)
+                                      : ms(cur?.durationSec || 0))
+                                )
+                              ))
+                          } ${
+                            2 *
+                            Math.PI *
+                            45 *
+                            Math.max(
+                              0,
+                              Math.min(
+                                1,
+                                s.remainingMs /
+                                  (s.phase === 'rest'
+                                    ? ms(cur?.restSec ?? 20)
+                                    : ms(cur?.durationSec || 0))
+                              )
+                            )
+                          }`}
+                        ></circle>
+                      </svg>
+                      <div className='absolute inset-0 grid place-items-center'>
+                        <div className='text-center'>
+                          <div
+                            className='text-2xl font-bold tabular-nums'
+                            aria-live='polite'
+                          >
+                            {fmt(s.remainingMs)}
+                          </div>
+                          <div className='text-[11px] uppercase tracking-wider text-neutral-400'>
+                            {s.phase === 'rest'
+                              ? L[lang].labels.restLabel
+                              : s.phase === 'work'
+                              ? L[lang].labels.workLabel
+                              : s.phase === 'paused'
+                              ? L[lang].labels.pausedLabel
+                              : L[lang].labels.readyLabel}
+                          </div>
                         </div>
                       </div>
                     </div>
                   </div>
-                </div>
 
-                <div className="mt-4 flex items-center gap-2 flex-wrap">
-                  {s.phase === 'ready' && (
-                    <button onClick={()=>{ d({type:'START'}); onStartAudio && onStartAudio(); }}
-                            className="px-4 py-2 rounded-2xl bg-sky-600 hover:bg-sky-500 font-semibold">{L[lang].labels.start}</button>
-                  )}
-                  {s.phase !== 'ready' && s.phase !== 'finished' && (
-                    <>
-                      {s.phase !== 'paused' ? (
-                        <button onClick={()=>d({type:'PAUSE'})} className="px-3 py-2 rounded-2xl bg-amber-600 hover:bg-amber-500 font-semibold">
-                          {L[lang].labels.pause}
+                  <div className='mt-4 flex items-center gap-2 flex-wrap'>
+                    {s.phase === 'ready' && (
+                      <button
+                        onClick={() => {
+                          d({ type: 'START' });
+                          onStartAudio && onStartAudio();
+                        }}
+                        className='px-4 py-2 rounded-2xl bg-sky-600 hover:bg-sky-500 font-semibold'
+                      >
+                        {L[lang].labels.start}
+                      </button>
+                    )}
+                    {s.phase !== 'ready' && s.phase !== 'finished' && (
+                      <>
+                        {s.phase !== 'paused' ? (
+                          <button
+                            onClick={() => d({ type: 'PAUSE' })}
+                            className='px-3 py-2 rounded-2xl bg-amber-600 hover:bg-amber-500 font-semibold'
+                          >
+                            {L[lang].labels.pause}
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => d({ type: 'RESUME' })}
+                            className='px-3 py-2 rounded-2xl bg-emerald-600 hover:bg-emerald-500 font-semibold'
+                          >
+                            {L[lang].labels.continue}
+                          </button>
+                        )}
+                        <button
+                          onClick={() => d({ type: 'PREV' })}
+                          className='px-3 py-2 rounded-2xl bg-neutral-800 hover:bg-neutral-700 border border-neutral-700'
+                        >
+                          {L[lang].labels.prev}
                         </button>
-                      ) : (
-                        <button onClick={()=>d({type:'RESUME'})} className="px-3 py-2 rounded-2xl bg-emerald-600 hover:bg-emerald-500 font-semibold">
-                          {L[lang].labels.continue}
+                        <button
+                          onClick={() => d({ type: 'NEXT' })}
+                          className='px-3 py-2 rounded-2xl bg-neutral-800 hover:bg-neutral-700 border border-neutral-700'
+                        >
+                          {L[lang].labels.next}
                         </button>
-                      )}
-                      <button onClick={()=>d({type:'PREV'})} className="px-3 py-2 rounded-2xl bg-neutral-800 hover:bg-neutral-700 border border-neutral-700">{L[lang].labels.prev}</button>
-                      <button onClick={()=>d({type:'NEXT'})} className="px-3 py-2 rounded-2xl bg-neutral-800 hover:bg-neutral-700 border border-neutral-700">{L[lang].labels.next}</button>
-                      <button onClick={()=>d({type:'RESET'})} className="px-3 py-2 rounded-2xl bg-neutral-800 hover:bg-neutral-700 border border-neutral-700">{L[lang].labels.reset}</button>
-                    </>
-                  )}
-                  {s.phase === 'finished' && (
-                    <button onClick={()=>d({type:'RESET'})} className="px-4 py-2 rounded-2xl bg-sky-600 hover:bg-sky-500 font-semibold">{L[lang].labels.reset}</button>
-                  )}
+                        <button
+                          onClick={() => d({ type: 'RESET' })}
+                          className='px-3 py-2 rounded-2xl bg-neutral-800 hover:bg-neutral-700 border border-neutral-700'
+                        >
+                          {L[lang].labels.reset}
+                        </button>
+                      </>
+                    )}
+                    {s.phase === 'finished' && (
+                      <button
+                        onClick={() => d({ type: 'RESET' })}
+                        className='px-4 py-2 rounded-2xl bg-sky-600 hover:bg-sky-500 font-semibold'
+                      >
+                        {L[lang].labels.reset}
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          </main>
-        </div>
-      );
-    }
+            </main>
+          </div>
+        );
+      }
 
-    function App(){
-      const [lang, setLang] = useState(loadLang());
-      useEffect(()=> saveLang(lang), [lang]);
-      const T = L[lang];
+      function App() {
+        const [lang, setLang] = useState(loadLang());
+        useEffect(() => saveLang(lang), [lang]);
+        const T = L[lang];
 
-      // build workout copy for selected mode (so we can reorder)
-      const now = new Date();
-      const weekday = now.getDay(); // 0 = Sunday
-      const planKey = DAY_PLAN[weekday];
-      const dateStr = now.toLocaleDateString(lang==='vi'?'vi-VN':'en-US');
-      const [mode, setMode] = useState(planKey);
-      const [seed, setSeed] = useState(0);
+        // build workout copy for selected mode (so we can reorder)
+        const now = new Date();
+        const weekday = now.getDay(); // 0 = Sunday
+        const planKey = DAY_PLAN[weekday];
+        const dateStr = now.toLocaleDateString(
+          lang === 'vi' ? 'vi-VN' : 'en-US'
+        );
+        const [mode, setMode] = useState(planKey);
+        const [seed, setSeed] = useState(0);
 
-      const baseWk = WORKOUTS_BASE.find(w => w.key === mode);
-      const [exs, setExs] = useState(baseWk ? JSON.parse(JSON.stringify(baseWk.exercises)) : []);
-      useEffect(()=>{
-        const wk = WORKOUTS_BASE.find(w => w.key === mode);
-        setExs(wk ? JSON.parse(JSON.stringify(wk.exercises)) : []);
-        setSeed(x=>x+1); // reset player
-      }, [mode]);
+        const baseWk = WORKOUTS_BASE.find((w) => w.key === mode);
+        const [exs, setExs] = useState(
+          baseWk ? JSON.parse(JSON.stringify(baseWk.exercises)) : []
+        );
+        useEffect(() => {
+          const wk = WORKOUTS_BASE.find((w) => w.key === mode);
+          setExs(wk ? JSON.parse(JSON.stringify(wk.exercises)) : []);
+          setSeed((x) => x + 1); // reset player
+        }, [mode]);
 
-      useEffect(()=>{
-        const handler = (e) => {
-          const { dir, index } = e.detail || {};
-          if (dir === -1 && index > 0) {
-            const arr = exs.slice();
-            const t = arr[index]; arr[index] = arr[index-1]; arr[index-1] = t;
-            setExs(arr); setSeed(x=>x+1);
-          }
-          if (dir === 1 && index < exs.length-1) {
-            const arr = exs.slice();
-            const t = arr[index]; arr[index] = arr[index+1]; arr[index+1] = t;
-            setExs(arr); setSeed(x=>x+1);
-          }
-        };
-        window.addEventListener('EX_REORDER', handler);
-        return ()=> window.removeEventListener('EX_REORDER', handler);
-      }, [exs]);
+        useEffect(() => {
+          const handler = (e) => {
+            const { dir, index } = e.detail || {};
+            if (dir === -1 && index > 0) {
+              const arr = exs.slice();
+              const t = arr[index];
+              arr[index] = arr[index - 1];
+              arr[index - 1] = t;
+              setExs(arr);
+              setSeed((x) => x + 1);
+            }
+            if (dir === 1 && index < exs.length - 1) {
+              const arr = exs.slice();
+              const t = arr[index];
+              arr[index] = arr[index + 1];
+              arr[index + 1] = t;
+              setExs(arr);
+              setSeed((x) => x + 1);
+            }
+          };
+          window.addEventListener('EX_REORDER', handler);
+          return () => window.removeEventListener('EX_REORDER', handler);
+        }, [exs]);
 
-      const todayName = T.dayNames[weekday];
-      const isRest = mode === 'REST';
+        const todayName = T.dayNames[weekday];
+        const isRest = mode === 'REST';
 
-      const beeps = useBeeps();
+        const beeps = useBeeps();
 
-      return (
-        <div className="max-w-6xl mx-auto p-4 md:p-6">
-          <header className="flex items-center justify-between gap-3 mb-4">
-            <div>
-              <h1 className="text-2xl md:text-3xl font-bold">{T.appTitle}</h1>
-              <p className="text-neutral-400 text-sm">{T.subtitle(T.dayNames[weekday], dateStr, mode)}</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <label className="text-sm">
-                <span className="mr-2 text-neutral-400">{T.labels.language}</span>
-                <select value={lang} onChange={(e)=> setLang(e.target.value)}
-                        className="bg-neutral-900 border border-neutral-700 rounded-lg px-2 py-1">
-                  <option value="vi">Tiếng Việt</option>
-                  <option value="en">English</option>
-                </select>
-              </label>
-              <label className="text-sm">
-                <span className="mx-2 text-neutral-400">{T.labels.changeSession}</span>
-                <select value={mode} onChange={(e)=>{ setMode(e.target.value); }}
-                        className="bg-neutral-900 border border-neutral-700 rounded-lg px-2 py-1">
-                  <option value="A">{T.sessions.A}</option>
-                  <option value="B">{T.sessions.B}</option>
-                  <option value="C">{T.sessions.C}</option>
-                  <option value="REST">{T.sessions.REST}</option>
-                </select>
-              </label>
-            </div>
-          </header>
+        return (
+          <div className='max-w-6xl mx-auto p-4 md:p-6'>
+            <header className='flex items-center justify-between gap-3 mb-4'>
+              <div>
+                <h1 className='text-2xl md:text-3xl font-bold'>{T.appTitle}</h1>
+                <p className='text-neutral-400 text-sm'>
+                  {T.subtitle(T.dayNames[weekday], dateStr, mode)}
+                </p>
+              </div>
+              <div className='flex items-center gap-2'>
+                <label className='text-sm'>
+                  <span className='mr-2 text-neutral-400'>
+                    {T.labels.language}
+                  </span>
+                  <select
+                    value={lang}
+                    onChange={(e) => setLang(e.target.value)}
+                    className='bg-neutral-900 border border-neutral-700 rounded-lg px-2 py-1'
+                  >
+                    <option value='vi'>Tiếng Việt</option>
+                    <option value='en'>English</option>
+                  </select>
+                </label>
+                <label className='text-sm'>
+                  <span className='mx-2 text-neutral-400'>
+                    {T.labels.changeSession}
+                  </span>
+                  <select
+                    value={mode}
+                    onChange={(e) => {
+                      setMode(e.target.value);
+                    }}
+                    className='bg-neutral-900 border border-neutral-700 rounded-lg px-2 py-1'
+                  >
+                    <option value='A'>{T.sessions.A}</option>
+                    <option value='B'>{T.sessions.B}</option>
+                    <option value='C'>{T.sessions.C}</option>
+                    <option value='REST'>{T.sessions.REST}</option>
+                  </select>
+                </label>
+              </div>
+            </header>
 
-          {isRest ? (
-            <RestScreen lang={lang} todayName={todayName} dateStr={dateStr} onOverride={(k)=>setMode(k)} />
-          ) : (
-            <Player key={`player-${mode}-${seed}-${exs.map(e=>e.id).join('-')}`}
-                    lang={lang} exs={exs} labels={T.labels} onStartAudio={()=>beeps.ensure()} />
-          )}
+            {isRest ? (
+              <RestScreen
+                lang={lang}
+                todayName={todayName}
+                dateStr={dateStr}
+                onOverride={(k) => setMode(k)}
+              />
+            ) : (
+              <Player
+                key={`player-${mode}-${seed}-${exs.map((e) => e.id).join('-')}`}
+                lang={lang}
+                exs={exs}
+                labels={T.labels}
+                onStartAudio={() => beeps.ensure()}
+              />
+            )}
 
-          <footer className="text-center text-xs text-neutral-500 mt-6">
-            <p>{T.labels.shortcuts}</p>
-          </footer>
-        </div>
-      );
-    }
+            <footer className='text-center text-xs text-neutral-500 mt-6'>
+              <p>{T.labels.shortcuts}</p>
+            </footer>
+          </div>
+        );
+      }
 
-    ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
-  </script>
-</body>
+      ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+  </body>
 </html>
